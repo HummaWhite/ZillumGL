@@ -15,14 +15,14 @@ bool Shader::load(const char* filePath)
 	std::fstream file;
 	bool includeGeomeryCode = 0;
 
-	std::cout << "Loading Shader: " << filePath << " ... ";
+	std::cout << "[Shader]\tLoading [" << filePath << "] ... ";
 
 	try
 	{
 		file.open(filePath);
 		if (!file.is_open())
 		{
-			std::cout << "Shader file not found" << std::endl;
+			std::cout << "[Error]\t\tShader file not found" << std::endl;
 			return false;
 		}
 		std::string fileString;
@@ -35,7 +35,7 @@ bool Shader::load(const char* filePath)
 			if (fileString == "//$Fragment") break;
 			vertexCode += fileString + '\n';
 		}
-		if (vertexCode == "") throw "Error: vertex shader not found";
+		if (vertexCode == "") throw "[Error]\t\tVertex shader not found";
 		while (std::getline(file, fileString))
 		{
 			if (fileString == "//$Geometry")
@@ -45,12 +45,12 @@ bool Shader::load(const char* filePath)
 			}
 			fragmentCode += fileString + '\n';
 		}
-		if (fragmentCode == "") throw "Error: fragment shader not found";
+		if (fragmentCode == "") throw "[Error]\t\tFragment shader not found";
 		while (std::getline(file, fileString))
 		{
 			geometryCode += fileString + '\n';
 		}
-		if (includeGeomeryCode && geometryCode == "") throw "Error: geometry shader not found";
+		if (includeGeomeryCode && geometryCode == "") throw "[Error]\t\tGeometry shader not found";
 		file.close();
 	}
 	catch (const char* err)
@@ -62,7 +62,7 @@ bool Shader::load(const char* filePath)
 	const char* geometry = (includeGeomeryCode && (geometryCode != "")) ? geometryCode.c_str() : nullptr;
 	compileShader(vertexCode.c_str(), fragmentCode.c_str(), geometry);
 
-	std::cout << "Done" << std::endl;
+	std::cout << "[Done]" << std::endl;
 	m_Name = std::string(filePath);
 	return true;
 }
@@ -162,7 +162,7 @@ int Shader::getUniformLocation(const char* name) const
 {
 	GLint location = glGetUniformLocation(m_ID, name);
 	if (location == -1)
-		std::cout << "Error: unable to locate the uniform:  " << name << "  in shader:  " << m_Name << std::endl;
+		std::cout << "[Error]\t\tUnable to locate the uniform [" << name << "] in shader: " << m_Name << std::endl;
 	return location;
 }
 
@@ -170,7 +170,7 @@ GLint Shader::getUniformLocation(GLuint programID, const char* name)
 {
 	GLint location = glGetUniformLocation(programID, name);
 	if (location == -1)
-		std::cout << "Error: unable to locate the uniform::" << name << " in shader number: " << programID << std::endl;
+		std::cout << "[Error]\t\tUnable to locate uniform [" << name << "] in shader numbered: " << programID << std::endl;
 	return location;
 }
 

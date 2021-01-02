@@ -10,6 +10,10 @@ Model::Model() :
 {
 }
 
+Model::~Model()
+{
+}
+
 Model::Model(const char* filePath, glm::vec3 pos, float size) :
 	m_Pos(pos),
 	m_Scale(size),
@@ -19,31 +23,11 @@ Model::Model(const char* filePath, glm::vec3 pos, float size) :
 	loadModel(filePath);
 }
 
-Model::Model(Shape& shape, glm::vec3 pos, float size) :
-	m_Pos(pos),
-	m_Scale(size),
-	m_RotMatrix(glm::mat4(1.0f)),
-	m_LoadedFromFile(false)
-{
-	loadShape(shape);
-}
-
-Model::~Model()
-{
-	for (auto i : m_Meshes)
-	{
-		if (i != nullptr)
-		{
-			delete i;
-		}
-	}
-}
-
 bool Model::loadModel(const char* filePath)
 {
 	m_LoadedFromFile = true;
 	Assimp::Importer importer;
-	GLuint option = aiProcess_Triangulate
+	uint32_t option = aiProcess_Triangulate
 		| aiProcess_FlipUVs
 		| aiProcess_GenSmoothNormals
 		| aiProcess_GenUVCoords
@@ -57,28 +41,19 @@ bool Model::loadModel(const char* filePath)
 		;
 	const aiScene* scene = importer.ReadFile(filePath, option);
 
-	std::cout << "Loading Model: " << filePath << " ..." << std::endl;
+	std::cout << "[Model]\t\tLoading [" << filePath << "] ... ";
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
-		std::cout << "Error: Assimp::" << importer.GetErrorString() << std::endl;
+		std::cout << "[Error]\t\tAssimp: " << importer.GetErrorString() << std::endl;
 		return false;
 	}
 
 	processNode(scene->mRootNode, scene);
 
-	std::cout << "Done" << std::endl;
+	std::cout << "  [" << m_Meshes.size() << " mesh(es)]" << std::endl;
 	m_Name = std::string(filePath);
 	return true;
-}
-
-void Model::draw(Shader& shader)
-{
-	shader.setMat4("model", this->modelMatrix());
-	for (auto i : m_Meshes)
-	{
-		i->draw(shader);
-	}
 }
 
 void Model::setPos(glm::vec3 pos)
@@ -143,20 +118,12 @@ glm::mat4 Model::modelMatrix() const
 	return model;
 }
 
-void Model::loadShape(Shape& shape)
-{
-	Mesh* mesh = new Mesh();
-	mesh->loadShape(shape);
-	m_Meshes.push_back(mesh);
-	m_Name = "Loaded From Shape";
-}
-
 void Model::processNode(aiNode* node, const aiScene* scene)
 {
 	for (int i = 0; i < node->mNumMeshes; i++)
 	{
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		m_Meshes.push_back(processMesh(mesh, scene));
+		m_Meshes.push_back(processMesh(mesh));
 	}
 
 	for (int i = 0; i < node->mNumChildren; i++)
@@ -165,36 +132,24 @@ void Model::processNode(aiNode* node, const aiScene* scene)
 	}
 }
 
-Mesh* Model::processMesh(aiMesh* mesh, const aiScene* scene)
+Mesh Model::processMesh(aiMesh* mesh)
 {
-	std::cout << "	Processing Mesh... ";
-	std::vector<GLuint> indices;
+	std::vector<glm::vec3> vertices(mesh->mNumVertices);
+	std::vector<glm::vec3> normals(mesh->mNumVertices);
+	std::vector<uint32_t> indices;
+
 	for (int i = 0; i < mesh->mNumFaces; i++)
 	{
-		aiFace face = mesh->mFaces[i];
-		for (int j = 0; j < face.mNumIndices; j++)
-			indices.push_back(face.mIndices[j]);
+		auto face = mesh->mFaces[i];
+		for (int j = 0; j < face.mNumIndices; j++) indices.push_back(face.mIndices[j]);
 	}
 
-	std::vector<Mesh::POS3_UV2_NORM3> data;
-	int validVertexCount = 0;
-	for (int i = 0; i < mesh->mNumVertices; i++)
-	{
-		Mesh::POS3_UV2_NORM3 vertex;
+	memcpy(vertices.data(), mesh->mVertices, mesh->mNumVertices * sizeof(glm::vec3));
+	memcpy(normals.data(), mesh->mNormals, mesh->mNumVertices * sizeof(glm::vec3));
 
-		vertex.pos = { mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z };
-		vertex.uv = mesh->mTextureCoords[0] ?
-			glm::vec2{ mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y } :
-			glm::vec2{ 0, 0 };
-		vertex.norm = { mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z };
-
-		data.push_back(vertex);
-	}
-
-	Mesh* newMesh = new Mesh;
-	newMesh->loadMesh(&data[0], mesh->mNumVertices, indices, LAYOUT_POS3_UV2_NORM3);
-
-	std::cout << "Done" << std::endl;
-
-	return newMesh;
+	Mesh m;
+	m.vertices = vertices;
+	m.normals = normals;
+	m.indices = indices;
+	return m;
 }

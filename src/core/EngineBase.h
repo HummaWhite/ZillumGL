@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <memory>
@@ -27,9 +28,8 @@
 #include "Shape.h"
 #include "VerticalSync.h"
 #include "FrameBuffer.h"
-#include "Skybox.h"
 #include "CheckError.h"
-#include "DepthMap.h"
+#include "Accelerator/BVH.h"
 
 class EngineBase
 {

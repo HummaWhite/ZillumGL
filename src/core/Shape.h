@@ -1,5 +1,4 @@
 #pragma once
-#pragma GCC optimize(3, "Ofast", "inline")
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>

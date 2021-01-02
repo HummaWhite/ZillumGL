@@ -1,5 +1,9 @@
 #pragma once
 
+#include <iostream>
+#include <memory>
+#include <vector>
+
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -7,19 +11,26 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "Shader.h"
-#include "Mesh.h"
+#include "Texture.h"
+
+struct Mesh
+{
+	std::vector<glm::vec3> vertices;
+	std::vector<glm::vec3> normals;
+	std::vector<glm::vec2> texCoords;
+	std::vector<uint32_t> indices;
+};
 
 class Model
 {
 public:
 	Model();
-	Model(const char* filePath, glm::vec3 pos = { 0.0f, 0.0f, 0.0f }, float size = 1.0f);
-	Model(Shape& shape, glm::vec3 pos = { 0.0f, 0.0f, 0.0f }, float size = 1.0f);
 	~Model();
+	Model(const char* filePath, glm::vec3 pos = { 0.0f, 0.0f, 0.0f }, float size = 1.0f);
 
 	bool loadModel(const char* filePath);
-	void draw(Shader& shader);
+
+	std::vector<Mesh> meshes() const { return m_Meshes; }
 
 	void setPos(glm::vec3 pos);
 	void setPos(float x, float y, float z);
@@ -38,14 +49,12 @@ public:
 	glm::mat4 modelMatrix() const;
 	std::string name() const { return m_Name; }
 
-	void loadShape(Shape& shape);
-
 private:
 	void processNode(aiNode* node, const aiScene* scene);
-	Mesh* processMesh(aiMesh* mesh, const aiScene* scene);
+	Mesh processMesh(aiMesh* mesh);
 
 private:
-	std::vector<Mesh*> m_Meshes;
+	std::vector<Mesh> m_Meshes;
 	glm::vec3 m_Pos;
 	glm::vec3 m_Scale;
 	glm::vec3 m_Rotation;
