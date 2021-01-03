@@ -4,6 +4,8 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#include "CheckError.h"
+
 class Buffer
 {
 public:

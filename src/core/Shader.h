@@ -18,23 +18,30 @@ public:
 	Shader() : m_ID(0) {}
 	Shader(const char* filePath);
 	~Shader();
+
 	GLuint ID() const { return m_ID; }
+
 	bool load(const char* filePath);
 	void enable() const;
 	void disable() const;
+
 	void set1i(const char* name, int v) const;
 	void set1f(const char* name, float v0) const;
 	void set2f(const char* name, float v0, float v1) const;
 	void set3f(const char* name, float v0, float v1, float v2) const;
 	void set4f(const char* name, float v0, float v1, float v2, float v3) const;
 	void set1d(const char* name, double v) const;
+
 	void setVec2(const char* name, const glm::vec2& vec) const;
 	void setVec3(const char* name, const glm::vec3& vec) const;
 	void setVec4(const char* name, const glm::vec4& vec) const;
 	void setMat3(const char* name, const glm::mat3& mat) const;
 	void setMat4(const char* name, const glm::mat4& mat) const;
 	void setVec2d(const char* name, const glm::dvec2& vec) const;
+
 	void setTexture(const char* name, const Texture& tex);
+	void setTexture(const char* name, const Texture& tex, uint32_t slot);
+
 	int getUniformLocation(const char* name) const;
 	static GLint getUniformLocation(GLuint programID, const char* name);
 

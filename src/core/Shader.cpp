@@ -158,6 +158,12 @@ void Shader::setTexture(const char* name, const Texture& tex)
 	set1i(name, texUnit);
 }
 
+void Shader::setTexture(const char* name, const Texture& tex, uint32_t slot)
+{
+	glBindTextureUnit(slot, tex.ID());
+	set1i(name, slot);
+}
+
 int Shader::getUniformLocation(const char* name) const
 {
 	GLint location = glGetUniformLocation(m_ID, name);

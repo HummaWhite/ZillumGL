@@ -45,7 +45,7 @@ private:
 	Texture frameTex[2];
 	int curFrame = 0;
 
-	Skybox skybox;
+	Texture skybox;
 
 	const int MAX_SPP;
 	int curSpp = 0;
@@ -56,6 +56,18 @@ private:
 	std::vector<TestSphere> spheres;
 	int sphereIndex = 0;
 
+	BVHBuffer bvhBuffer;
+	Texture vertexBuffer;
+	Texture normalBuffer;
+	Texture indexBuffer;
+	Texture boundBuffer;
+	Texture sizeIndexBuffer;
+
+	glm::vec3 albedo = glm::vec3(1.0f);
+	float metallic = 0.0f;
+	float roughness = 1.0f;
+
+	bool showBVH = false;
 	bool cursorDisabled = false;
 	bool firstCursorMove = true;
 	int lastCursorX = 0;

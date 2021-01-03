@@ -28,8 +28,25 @@ void RayTest::init()
 		frame[i].activateAttachmentTargets({ GL_COLOR_ATTACHMENT0 });
 	}
 
-	skybox.loadSphere("res/texture/090.hdr");
+	skybox.loadHDRPanorama("res/texture/010.hdr");
 	camera.setFOV(90.0f);
+
+	Model model("res/model/cube.obj");
+	BVH bvh(model.meshes());
+	bvhBuffer = bvh.genBuffers();
+
+	vertexBuffer.generateTexBuffer(*bvhBuffer.vertex, GL_RGB32F);
+	normalBuffer.generateTexBuffer(*bvhBuffer.normal, GL_RGB32F);
+	indexBuffer.generateTexBuffer(*bvhBuffer.index, GL_R32I);
+	boundBuffer.generateTexBuffer(*bvhBuffer.bound, GL_RGB32F);
+	sizeIndexBuffer.generateTexBuffer(*bvhBuffer.sizeIndex, GL_R32I);
+
+	rayTestShader.setTexture("vertices", vertexBuffer, 1);
+	rayTestShader.setTexture("normals", normalBuffer, 2);
+	rayTestShader.setTexture("indices", indexBuffer, 3);
+	rayTestShader.setTexture("bounds", boundBuffer, 4);
+	rayTestShader.setTexture("sizeIndices", sizeIndexBuffer, 5);
+	rayTestShader.setTexture("skybox", skybox, 6);
 
 	this->setupGUI();
 }
@@ -129,8 +146,8 @@ void RayTest::renderFrame()
 	glm::vec3 R = glm::normalize(glm::cross(F, U));
 	U = glm::normalize(glm::cross(R, F));
 
-	rayTestShader.resetTextureMap();
-	rayTestShader.setTexture("lastFrame", frameTex[curFrame ^ 1]);
+	rayTestShader.setTexture("lastFrame", frameTex[curFrame ^ 1], 0);
+	rayTestShader.set1i("showBVH", showBVH);
 
 	rayTestShader.setVec3("camF", F);
 	rayTestShader.setVec3("camR", R);
@@ -139,6 +156,7 @@ void RayTest::renderFrame()
 	rayTestShader.set1f("tanFOV", glm::tan(glm::radians(camera.FOV() * 0.5f)));
 	rayTestShader.set1f("camAsp", (float)this->windowWidth() / (float)this->windowHeight());
 
+	/*
 	rayTestShader.set1i("sphereCount", spheres.size());
 	const std::string tmp("sphereList[");
 	for (int i = 0; i < spheres.size(); i++)
@@ -149,16 +167,19 @@ void RayTest::renderFrame()
 		rayTestShader.set1f((tmp + std::to_string(i) + "].metallic").c_str(), spheres[i].metallic);
 		rayTestShader.set1f((tmp + std::to_string(i) + "].roughness").c_str(), spheres[i].roughness);
 	}
+	*/
 
-	rayTestShader.setTexture("skybox", skybox.texture());
+	rayTestShader.setVec3("albedo", albedo);
+	rayTestShader.set1f("metallic", metallic);
+	rayTestShader.set1f("roughness", roughness);
+
 	rayTestShader.set1i("spp", curSpp);
 
 	renderer.draw(screenVA, rayTestShader);
 	frame[curFrame].unbind();
 
 	renderer.clear(0.0f, 0.0f, 0.0f);
-	postShader.resetTextureMap();
-	postShader.setTexture("frameBuffer", frameTex[curFrame]);
+	postShader.setTexture("frameBuffer", frameTex[curFrame], 0);
 
 	renderer.draw(screenVA, postShader);
 }
@@ -181,6 +202,18 @@ void RayTest::renderGUI()
 
 	ImGui::Begin("RayTest");
 	{
+		if (ImGui::Checkbox("Show BVH", &showBVH))
+		{
+			curSpp = 0;
+		}
+
+		if (ImGui::ColorEdit3("Albedo", glm::value_ptr(albedo)) ||
+			ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Roughness", &roughness, 0.001f, 1.0f))
+		{
+			curSpp = 0;
+		}
+
 		ImGui::Checkbox("Vertical Sync", &verticalSync);
 		ImGui::Text("SPP: %4d/%4d", curSpp, MAX_SPP);
 		ImGui::Text("x: %.3f y: %.3f z: %.3f  FOV: %.1f", camera.pos().x, camera.pos().y, camera.pos().z, camera.FOV());
@@ -197,6 +230,7 @@ void RayTest::renderGUI()
 	}
 	ImGui::End();
 
+	/*
 	ImGui::Begin("Objects");
 	{
 		if (spheres.size() > 0)
@@ -227,6 +261,7 @@ void RayTest::renderGUI()
 		}
 	}
 	ImGui::End();
+	*/
 
 	ImGui::EndFrame();
 	ImGui::Render();

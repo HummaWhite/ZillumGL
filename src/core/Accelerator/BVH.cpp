@@ -38,9 +38,10 @@ BVH::BVH(const std::vector<Mesh>& meshes, BVHSplitMethod splitMethod):
 		hittableInfo[i] = hInfo;
 	}
 
-	nodes.resize(hittableInfo.size() * 2 - 1);
+	bounds.resize(hittableInfo.size() * 2 - 1);
+	sizeIndices.resize(hittableInfo.size() * 2 - 1);
 	build(0, hittableInfo, bound, 0, hittableInfo.size() - 1);
-	std::cout << "[" << vertices.size() << " vertices, " << indices.size() / 3 << " triangles, " << nodes.size() << " nodes]\n";
+	std::cout << "[" << vertices.size() << " vertices, " << indices.size() / 3 << " triangles, " << bounds.size() << " nodes]\n";
 }
 
 BVH::~BVH()
@@ -50,21 +51,26 @@ BVH::~BVH()
 BVHBuffer BVH::genBuffers()
 {
 	auto vertexBuf = std::make_shared<Buffer>();
+	auto normalBuf = std::make_shared<Buffer>();
 	auto indexBuf = std::make_shared<Buffer>();
-	auto nodeBuf = std::make_shared<Buffer>();
+	auto boundBuf = std::make_shared<Buffer>();
+	auto sizeIndexBuf = std::make_shared<Buffer>();
 
 	vertexBuf->allocate(vertices.size() * sizeof(glm::vec3), vertices.data(), 0);
+	normalBuf->allocate(normals.size() * sizeof(glm::vec3), normals.data(), 0);
 	indexBuf->allocate(indices.size() * sizeof(uint32_t), indices.data(), 0);
-	nodeBuf->allocate(nodes.size() * sizeof(BVHNode), nodes.data(), 0);
+	boundBuf->allocate(bounds.size() * sizeof(AABB), bounds.data(), 0);
+	sizeIndexBuf->allocate(sizeIndices.size() * sizeof(int), sizeIndices.data(), 0);
 
-	return BVHBuffer{ vertexBuf, indexBuf, nodeBuf };
+	return BVHBuffer{ vertexBuf, normalBuf, indexBuf, boundBuf, sizeIndexBuf };
 }
 
 void BVH::build(int offset, std::vector<HittableInfo>& hittableInfo, const AABB& nodeBound, int l, int r)
 {
 	int dim = nodeBound.maxExtent();
 	int size = (r - l) * 2 + 1;
-	nodes[offset] = BVHNode{ nodeBound, (size == 1) ? -l : size };
+	bounds[offset] = nodeBound;
+	sizeIndices[offset] = (size == 1) ? -l : size;
 
 	if (l == r) return;
 

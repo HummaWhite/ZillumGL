@@ -13,17 +13,13 @@
 
 enum class BVHSplitMethod { SAH, Middle, EqualCounts };
 
-struct BVHNode
-{
-	AABB box;
-	int sizeIndex;
-};
-
 struct BVHBuffer
 {
-	std::shared_ptr<Buffer> vertexBuffer;
-	std::shared_ptr<Buffer> indexBuffer;
-	std::shared_ptr<Buffer> nodeBuffer;
+	std::shared_ptr<Buffer> vertex;
+	std::shared_ptr<Buffer> normal;
+	std::shared_ptr<Buffer> index;
+	std::shared_ptr<Buffer> bound;
+	std::shared_ptr<Buffer> sizeIndex;
 };
 
 class BVH
@@ -49,6 +45,7 @@ private:
 	std::vector<glm::vec3> vertices;
 	std::vector<glm::vec3> normals;
 	std::vector<uint32_t> indices;
-	std::vector<BVHNode> nodes;
+	std::vector<AABB> bounds;
+	std::vector<int> sizeIndices;
 };
 

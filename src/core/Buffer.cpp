@@ -1,5 +1,4 @@
 #include "Buffer.h"
-#include "Buffer.h"
 
 void Buffer::allocate(int size, const void* data, GLuint elementsCount, bool batched, GLenum type)
 {

@@ -82,6 +82,7 @@ void Texture::loadHDRPanorama(const std::string& filePath)
 
 void Texture::generateTexBuffer(const Buffer& buffer, GLenum format)
 {
+	glCreateTextures(GL_TEXTURE_BUFFER, 1, &m_ID);
 	glTextureBuffer(m_ID, format, buffer.ID());
 }
 
