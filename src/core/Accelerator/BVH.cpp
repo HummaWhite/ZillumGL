@@ -34,7 +34,7 @@ BVH::BVH(const std::vector<Mesh>& meshes, BVHSplitMethod splitMethod):
 			vertices[clamp(indices[i * 3 + 2])]);
 		hInfo.centroid = hInfo.bound.centroid();
 		hInfo.index = i;
-		bound = (i == 1) ? hInfo.bound : AABB(bound, hInfo.bound);
+		bound = (i == 0) ? hInfo.bound : AABB(bound, hInfo.bound);
 		hittableInfo[i] = hInfo;
 	}
 
@@ -70,7 +70,7 @@ void BVH::build(int offset, std::vector<HittableInfo>& hittableInfo, const AABB&
 	int dim = nodeBound.maxExtent();
 	int size = (r - l) * 2 + 1;
 	bounds[offset] = nodeBound;
-	sizeIndices[offset] = (size == 1) ? -l : size;
+	sizeIndices[offset] = (size == 1) ? -hittableInfo[l].index : size;
 
 	if (l == r) return;
 
