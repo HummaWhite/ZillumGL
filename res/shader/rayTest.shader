@@ -25,26 +25,10 @@ struct Ray
 	vec3 dir;
 };
 
-struct Sphere
-{
-	vec3 center;
-	float radius;
-	vec3 albedo;
-	float metallic;
-	float roughness;
-};
-
-struct Square
-{
-	vec3 va;
-	vec3 vb;
-	vec3 vc;
-};
-
 struct SurfaceInfo
 {
 	vec3 norm;
-	int id;
+	int matId;
 };
 
 struct SurfaceInteraction
@@ -66,6 +50,13 @@ struct SceneHitInfo
 	float dist;
 };
 
+struct Material
+{
+	vec3 albedo;
+	float metallic;
+	float roughness;
+};
+
 uniform vec3 camF;
 uniform vec3 camR;
 uniform vec3 camU;
@@ -73,13 +64,9 @@ uniform vec3 camPos;
 uniform float tanFOV;
 uniform float camAsp;
 uniform float camNear;
-uniform vec3 background;
-uniform int sphereCount;
-uniform Sphere sphereList[4];
 uniform sampler2D skybox;
 uniform sampler2D lastFrame;
 uniform int spp;
-uniform int maxSpp;
 uniform bool showBVH;
 uniform int boxIndex;
 uniform float bvhDepth;
@@ -90,9 +77,8 @@ uniform isamplerBuffer indices;
 uniform samplerBuffer bounds;
 uniform isamplerBuffer sizeIndices;
 
-uniform vec3 matAlbedo;
-uniform float matMetallic;
-uniform float matRoughness;
+const int MAX_MATERIALS = 16;
+uniform Material materials[MAX_MATERIALS];
 
 uint randSeed;
 uint hash(uint seed)
@@ -167,44 +153,12 @@ vec3 rayPoint(Ray ray, float t)
 	return ray.ori + ray.dir * t;
 }
 
-HitInfo intersectSphere(int id, Ray ray)
-{
-	vec3 d = ray.dir;
-	vec3 o = ray.ori;
-	vec3 c = sphereList[id].center;
-
-	float t = dot(d, c - o) / dot(d, d);
-	float r = sphereList[id].radius;
-
-	float e = length(o + d * t - c);
-
-	HitInfo ret;
-	ret.dist = 0.0;
-	if (e > r)
-	{
-		ret.hit = false;
-		return ret;
-	}
-
-	float q = sqrt(max(r * r - e * e, 0.0));
-	if (length(o - c) < r)
-	{
-		ret.dist = t + q;
-		ret.hit = (ret.dist >= 0.0);
-		return ret;
-	}
-
-	ret.dist = t - q;
-	ret.hit = (ret.dist >= 0.0);
-	return ret;
-}
-
 HitInfo intersectTriangle(int id, Ray ray)
 {
-	const int mask = 0x00ffffff;
-	int ia = texelFetch(indices, id * 3 + 0).r & mask;
-	int ib = texelFetch(indices, id * 3 + 1).r & mask;
-	int ic = texelFetch(indices, id * 3 + 2).r & mask;
+	id &= 0x00ffffff;
+	int ia = texelFetch(indices, id * 3 + 0).r;
+	int ib = texelFetch(indices, id * 3 + 1).r;
+	int ic = texelFetch(indices, id * 3 + 2).r;
 
 	vec3 a = texelFetch(vertices, ia).xyz;
 	vec3 b = texelFetch(vertices, ib).xyz;
@@ -256,20 +210,15 @@ HitInfo intersectTriangle(int id, Ray ray)
 	return ret;
 }
 
-SurfaceInfo sphereSurfaceInfo(int id, vec3 p)
-{
-	SurfaceInfo ret;
-	ret.norm = normalize(p - sphereList[id].center);
-	ret.id = id;
-	return ret;
-}
-
 SurfaceInfo triangleSurfaceInfo(int id, vec3 p)
 {
-	const int mask = 0x00ffffff;
-	int ia = texelFetch(indices, id * 3 + 0).r & mask;
-	int ib = texelFetch(indices, id * 3 + 1).r & mask;
-	int ic = texelFetch(indices, id * 3 + 2).r & mask;
+	SurfaceInfo ret;
+	ret.matId = id >> 24;
+	id &= 0x00ffffff;
+
+	int ia = texelFetch(indices, id * 3 + 0).r;
+	int ib = texelFetch(indices, id * 3 + 1).r;
+	int ic = texelFetch(indices, id * 3 + 2).r;
 
 	vec3 a = texelFetch(vertices, ia).xyz;
 	vec3 b = texelFetch(vertices, ib).xyz;
@@ -285,9 +234,7 @@ SurfaceInfo triangleSurfaceInfo(int id, vec3 p)
 	float lc = length(cross(a - p, b - p)) * areaInv;
 
 	vec3 norm = normalize(na * la + nb * lb + nc * lc);
-	SurfaceInfo ret;
 	ret.norm = norm;
-	ret.id = id;
 	return ret;
 }
 
@@ -301,7 +248,7 @@ bool boxHit(int id, Ray ray, out float tMin, out float tMax)
 	vec3 d = ray.dir;
 
 	vec3 dInv = 1.0 / d;
-
+	
 	if (abs(d.x) > 1.0 - eps)
 	{
 		if (o.y > pMin.y && o.y < pMax.y && o.z > pMin.z && o.z < pMax.z)
@@ -393,7 +340,7 @@ bool boxHit(int id, Ray ray, out float tMin, out float tMax)
 	return false;
 }
 
-const int STACK_SIZE = 100;
+const int STACK_SIZE = 64;
 int stack[STACK_SIZE];
 float maxDepth = 0.0;
 
@@ -414,13 +361,14 @@ int bvhHit(Ray ray, out float dist)
 		if (tpMin > dist) continue;
 
 		int sizeIndex = texelFetch(sizeIndices, k).r;
-		if (sizeIndex <= 0)
+		if (sizeIndex < 0)
 		{
-			HitInfo hInfo = intersectTriangle(-sizeIndex, ray);
+			sizeIndex ^= 0x80000000;
+			HitInfo hInfo = intersectTriangle(sizeIndex, ray);
 			if (hInfo.hit && hInfo.dist <= dist)
 			{
 				dist = hInfo.dist;
-				closestHit = -sizeIndex;
+				closestHit = sizeIndex;
 			}
 			maxDepth += 1.0;
 			continue;
@@ -537,11 +485,11 @@ vec4 sampleGGX(vec3 N, vec3 Wo, float roughness)
 	return sampleGGX(randBox(), N, Wo, roughness);
 }
 
-vec3 bsdf(int id, vec3 Wo, vec3 Wi, vec3 N)
+vec3 bsdf(int matId, vec3 Wo, vec3 Wi, vec3 N)
 {
-	vec3 albedo = matAlbedo;
-	float metallic = matMetallic;
-	float roughness = matRoughness;
+	vec3 albedo = materials[matId].albedo;
+	float metallic = materials[matId].metallic;
+	float roughness = materials[matId].roughness;
 
 	vec3 L = Wi;
 	vec3 V = Wo;
@@ -567,11 +515,11 @@ vec3 bsdf(int id, vec3 Wo, vec3 Wi, vec3 N)
 	return (kD * albedo / Pi + specular) * NdotL;
 }
 
-vec3 bsdf(int id, vec3 Wo, vec3 Wi, vec3 N, bool diffuse)
+vec3 bsdf(int matId, vec3 Wo, vec3 Wi, vec3 N, bool diffuse)
 {
-	vec3 albedo = matAlbedo;
-	float metallic = matMetallic;
-	float roughness = matRoughness;
+	vec3 albedo = materials[matId].albedo;
+	float metallic = materials[matId].metallic;
+	float roughness = materials[matId].roughness;
 
 	vec3 L = Wi;
 	vec3 V = Wo;
@@ -600,15 +548,17 @@ vec3 bsdf(int id, vec3 Wo, vec3 Wi, vec3 N, bool diffuse)
 	return specular * NdotL;
 }
 
-vec4 getSample(int id, vec3 N, vec3 Wo)
+vec4 getSample(int matId, vec3 N, vec3 Wo)
 {
-	bool sampleDiffuse = (rand() < 0.5 * (1.0 - matMetallic));
-	vec4 sp = sampleDiffuse ? sampleCosineWeighted(N) : sampleGGX(N, Wo, matRoughness);
+	float metallic = materials[matId].metallic;
+	float roughness = materials[matId].roughness;
+	bool sampleDiffuse = (rand() < 0.5 * (1.0 - metallic));
+	vec4 sp = sampleDiffuse ? sampleCosineWeighted(N) : sampleGGX(N, Wo, roughness);
 	if (sampleDiffuse) sp.w = -sp.w;
 	return sp;
 }
 
-vec3 trace(Ray ray, SurfaceInfo surfaceInfo, int depth)
+vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, int depth)
 {
 	vec3 result = vec3(0.0);
 	vec3 accumBsdf = vec3(1.0);
@@ -618,22 +568,22 @@ vec3 trace(Ray ray, SurfaceInfo surfaceInfo, int depth)
 	for (int bounce = 0; ; bounce++)
 	{
 		if (accumPdf < 1e-8) break;
-
 		if (bounce == depth) break;
+
+		int matId = id >> 24;
+		id &= 0x00ffffff;
 
 		vec3 P = ray.ori;
 		vec3 Wo = -ray.dir;
 		vec3 N = surfaceInfo.norm;
-		int id = surfaceInfo.id;
 
-		vec4 samp = getSample(id, N, Wo);
+		vec4 samp = getSample(matId, N, Wo);
 		vec3 Wi = samp.xyz;
-		//return N;
 
 		float pdf = samp.w;
 		if (abs(pdf) < 1e-8) break;
 
-		vec3 bsdf = bsdf(id, Wo, Wi, N, pdf < 0.0);
+		vec3 bsdf = bsdf(matId, Wo, Wi, N, pdf < 0.0);
 		if (pdf < 0.0) pdf = -pdf;
 
 		accumBsdf *= bsdf;
@@ -653,6 +603,7 @@ vec3 trace(Ray ray, SurfaceInfo surfaceInfo, int depth)
 
 		vec3 nextP = rayPoint(newRay, scHitInfo.dist);
 		surfaceInfo = triangleSurfaceInfo(scHitInfo.shapeId, nextP);
+		id = scHitInfo.shapeId;
 		newRay.ori = nextP;
 		ray = newRay;
 	}
@@ -679,7 +630,11 @@ void main()
 	ray.dir = rayDir;
 
 	SceneHitInfo scHitInfo = sceneHit(ray);
-	if (scHitInfo.shapeId == -1)
+	if (showBVH)
+	{
+		result = vec3(maxDepth / bvhDepth * 0.2);
+	}
+	else if (scHitInfo.shapeId == -1)
 	{
 		result = texture(skybox, sphereToPlane(rayDir)).rgb;
 	}
@@ -687,10 +642,10 @@ void main()
 	{
 		ray.ori = rayPoint(ray, scHitInfo.dist);
 		SurfaceInfo sInfo = triangleSurfaceInfo(scHitInfo.shapeId, ray.ori);
-		result = trace(ray, sInfo, 3);
+		result = trace(ray, scHitInfo.shapeId, sInfo, 3);
 	}
+
 	
-	if (showBVH) result = result * 1e-10 + vec3(maxDepth / bvhDepth);
 	/*
 	float tMin, tMax;
 	bool hit = boxHit(boxIndex, ray, tMin, tMax);

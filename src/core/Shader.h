@@ -11,6 +11,7 @@
 
 #include "Lighting.h"
 #include "Texture.h"
+#include "Buffer.h"
 
 class Shader
 {
@@ -42,6 +43,8 @@ public:
 	void setTexture(const char* name, const Texture& tex);
 	void setTexture(const char* name, const Texture& tex, uint32_t slot);
 
+	void setUniformBlock(const Buffer& buffer, int binding);
+
 	int getUniformLocation(const char* name) const;
 	static GLint getUniformLocation(GLuint programID, const char* name);
 
@@ -51,6 +54,10 @@ public:
 
 private:
 	void compileShader(const char* vertexSource, const char* fragmentSource, const char* geometrySource);
+	void checkShaderCompileInfo(uint32_t shaderId, const std::string& name);
+	void checkShaderLinkInfo();
+
+private:
 	GLuint m_ID;
 	std::string m_Name;
 

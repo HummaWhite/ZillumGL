@@ -2,25 +2,18 @@
 
 glm::mat4 Model::constRot = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
-Model::Model() :
-	m_Pos(glm::vec3(0.0f)),
-	m_RotMatrix(glm::mat4(1.0f)),
-	m_Scale(glm::vec3(1.0f)),
-	m_LoadedFromFile(false)
-{
-}
-
-Model::~Model()
-{
-}
-
-Model::Model(const char* filePath, glm::vec3 pos, float size) :
+Model::Model(const char* filePath, uint8_t matIndex, glm::vec3 pos, float size, glm::vec3 rotation) :
+	materialIndex(matIndex),
 	m_Pos(pos),
 	m_Scale(size),
 	m_RotMatrix(glm::mat4(1.0f)),
 	m_LoadedFromFile(true)
 {
 	loadModel(filePath);
+}
+
+Model::~Model()
+{
 }
 
 bool Model::loadModel(const char* filePath)
@@ -147,9 +140,27 @@ Mesh Model::processMesh(aiMesh* mesh)
 	memcpy(vertices.data(), mesh->mVertices, mesh->mNumVertices * sizeof(glm::vec3));
 	memcpy(normals.data(), mesh->mNormals, mesh->mNumVertices * sizeof(glm::vec3));
 
+	auto model = modelMatrix();
+	auto modelInv = glm::mat3(glm::transpose(glm::inverse(model)));
+
 	Mesh m;
-	m.vertices = vertices;
-	m.normals = normals;
+	m.vertices.resize(vertices.size());
+	m.normals.resize(normals.size());
 	m.indices = indices;
+	m.matIndex = materialIndex;
+
+	std::transform(vertices.begin(), vertices.end(), m.vertices.begin(),
+		[model](const glm::vec3& v)
+		{
+			return glm::vec3(model * glm::vec4(v, 1.0f));
+		}
+	);
+	std::transform(normals.begin(), normals.end(), m.normals.begin(),
+		[modelInv](const glm::vec3& n)
+		{
+			return modelInv * n;
+		}
+	);
+
 	return m;
 }

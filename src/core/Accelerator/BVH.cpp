@@ -1,110 +1,73 @@
 #include "BVH.h"
 
-BVH::BVH(const std::vector<Mesh>& meshes, BVHSplitMethod splitMethod):
-	splitMethod(splitMethod)
+PackedBVH BVH::build()
 {
 	std::cout << "[BVH]\t\tCPU Building ...  ";
-	uint32_t indicesCount = 0;
 
-	for (uint32_t i = 0; i < meshes.size(); i++)
-	{
-		vertices.insert(vertices.end(), meshes[i].vertices.begin(), meshes[i].vertices.end());
-		normals.insert(normals.end(), meshes[i].normals.begin(), meshes[i].normals.end());
-
-		std::vector<uint32_t> transIndices(meshes[i].indices.size());
-		std::transform(meshes[i].indices.begin(), meshes[i].indices.end(), transIndices.begin(),
-			[i, indicesCount](uint32_t x) { return (x + indicesCount) | (i << 24); });
-		// 8bit meshIndex | 24bit vertexIndex
-
-		indices.insert(indices.end(), transIndices.begin(), transIndices.end());
-		indicesCount += meshes[i].indices.size();
-	}
-
-	std::vector<HittableInfo> hittableInfo(indicesCount / 3);
-
-	const auto clamp = [](uint32_t x) { return x & 0x00ffffff; };
+	primInfo.resize(indices.size() / 3);
+	bounds.resize(primInfo.size() * 2 - 1);
+	sizeIndices.resize(primInfo.size() * 2 - 1);
 
 	AABB bound;
-	for (int i = 0; i < hittableInfo.size(); i++)
+	for (int i = 0; i < primInfo.size(); i++)
 	{
-		HittableInfo hInfo;
+		PrimInfo hInfo;
 		hInfo.bound = AABB(
-			vertices[clamp(indices[i * 3 + 0])],
-			vertices[clamp(indices[i * 3 + 1])],
-			vertices[clamp(indices[i * 3 + 2])]);
+			vertices[indices[i * 3 + 0]],
+			vertices[indices[i * 3 + 1]],
+			vertices[indices[i * 3 + 2]]);
 		hInfo.centroid = hInfo.bound.centroid();
-		hInfo.index = i;
+		hInfo.index = i | ((uint32_t)matIndices[i] << 24);
 		bound = (i == 0) ? hInfo.bound : AABB(bound, hInfo.bound);
-		hittableInfo[i] = hInfo;
+		primInfo[i] = hInfo;
 	}
 
-	bounds.resize(hittableInfo.size() * 2 - 1);
-	sizeIndices.resize(hittableInfo.size() * 2 - 1);
-	build(0, hittableInfo, bound, 0, hittableInfo.size() - 1);
-	std::cout << "[" << vertices.size() << " vertices, " << indices.size() / 3 << " triangles, " << bounds.size() << " nodes]\n";
+	build(0, bound, 0, primInfo.size() - 1);
+	std::cout << "[" << vertices.size() << " vertices, " << primInfo.size() << " triangles, " << bounds.size() << " nodes]\n";
+
+	return PackedBVH{ bounds, sizeIndices };
 }
 
-BVH::~BVH()
-{
-}
-
-BVHBuffer BVH::genBuffers()
-{
-	auto vertexBuf = std::make_shared<Buffer>();
-	auto normalBuf = std::make_shared<Buffer>();
-	auto indexBuf = std::make_shared<Buffer>();
-	auto boundBuf = std::make_shared<Buffer>();
-	auto sizeIndexBuf = std::make_shared<Buffer>();
-
-	vertexBuf->allocate(vertices.size() * sizeof(glm::vec3), vertices.data(), 0);
-	normalBuf->allocate(normals.size() * sizeof(glm::vec3), normals.data(), 0);
-	indexBuf->allocate(indices.size() * sizeof(uint32_t), indices.data(), 0);
-	boundBuf->allocate(bounds.size() * sizeof(AABB), bounds.data(), 0);
-	sizeIndexBuf->allocate(sizeIndices.size() * sizeof(int), sizeIndices.data(), 0);
-
-	return BVHBuffer{ vertexBuf, normalBuf, indexBuf, boundBuf, sizeIndexBuf };
-}
-
-void BVH::build(int offset, std::vector<HittableInfo>& hittableInfo, const AABB& nodeBound, int l, int r)
+void BVH::build(int offset, const AABB& nodeBound, int l, int r)
 {
 	int dim = nodeBound.maxExtent();
 	int size = (r - l) * 2 + 1;
 	bounds[offset] = nodeBound;
-	sizeIndices[offset] = (size == 1) ? -hittableInfo[l].index : size;
+	sizeIndices[offset] = (size == 1) ? (primInfo[l].index | 0x80000000) : size;
 
 	if (l == r) return;
 
 	const auto getDim = [](const glm::vec3& v, int d) { return *(float*)(&v.x + d); };
 
-	auto cmp = [dim, getDim](const HittableInfo& a, const HittableInfo& b)
+	auto cmp = [dim, getDim](const PrimInfo& a, const PrimInfo& b)
 	{
 		return getDim(a.centroid, dim) < getDim(b.centroid, dim);
 	};
 
-	std::sort(hittableInfo.begin() + l, hittableInfo.begin() + r, cmp);
+	std::sort(primInfo.begin() + l, primInfo.begin() + r, cmp);
 	int hittableCount = r - l + 1;
 
 	if (hittableCount == 2)
 	{
-		build(offset + 1, hittableInfo, hittableInfo[l].bound, l, l);
-		build(offset + 2, hittableInfo, hittableInfo[r].bound, r, r);
+		build(offset + 1, primInfo[l].bound, l, l);
+		build(offset + 2, primInfo[r].bound, r, r);
 		return;
 	}
 
 	AABB* boundInfo = new AABB[hittableCount];
 	AABB* boundInfoRev = new AABB[hittableCount];
 
-	boundInfo[0] = hittableInfo[l].bound;
-	boundInfoRev[hittableCount - 1] = hittableInfo[r].bound;
+	boundInfo[0] = primInfo[l].bound;
+	boundInfoRev[hittableCount - 1] = primInfo[r].bound;
 
 	for (int i = 1; i < hittableCount; i++)
 	{
-		boundInfo[i] = AABB(boundInfo[i - 1], hittableInfo[l + i].bound);
-		boundInfoRev[hittableCount - 1 - i] = AABB(boundInfoRev[hittableCount - i], hittableInfo[r - i].bound);
+		boundInfo[i] = AABB(boundInfo[i - 1], primInfo[l + i].bound);
+		boundInfoRev[hittableCount - 1 - i] = AABB(boundInfoRev[hittableCount - i], primInfo[r - i].bound);
 	}
 
 	int m = l;
-	switch (splitMethod)
+	switch (method)
 	{
 	case BVHSplitMethod::SAH:
 	{
@@ -128,7 +91,7 @@ void BVH::build(int offset, std::vector<HittableInfo>& hittableInfo, const AABB&
 		float mid = getDim(nodeCentroid, dim);
 		for (m = l; m < r - 1; m++)
 		{
-			float tmp = getDim(hittableInfo[m].centroid, dim);
+			float tmp = getDim(primInfo[m].centroid, dim);
 			if (tmp >= mid) break;
 		}
 	} break;
@@ -145,6 +108,6 @@ void BVH::build(int offset, std::vector<HittableInfo>& hittableInfo, const AABB&
 	delete[] boundInfo;
 	delete[] boundInfoRev;
 
-	build(offset + 1, hittableInfo, lBound, l, m);
-	build(offset + 2 * (m - l) + 2, hittableInfo, rBound, m + 1, r);
+	build(offset + 1, lBound, l, m);
+	build(offset + 2 * (m - l) + 2, rBound, m + 1, r);
 }

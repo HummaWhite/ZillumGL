@@ -13,39 +13,37 @@
 
 enum class BVHSplitMethod { SAH, Middle, EqualCounts };
 
-struct BVHBuffer
+struct PackedBVH
 {
-	std::shared_ptr<Buffer> vertex;
-	std::shared_ptr<Buffer> normal;
-	std::shared_ptr<Buffer> index;
-	std::shared_ptr<Buffer> bound;
-	std::shared_ptr<Buffer> sizeIndex;
+	std::vector<AABB> bounds;
+	std::vector<int> sizeIndices;
+};
+
+struct PrimInfo
+{
+	AABB bound;
+	glm::vec3 centroid;
+	int index;
 };
 
 class BVH
 {
 public:
-	BVH(const std::vector<Mesh>& meshes, BVHSplitMethod splitMethod = BVHSplitMethod::SAH);
-	~BVH();
-	BVHBuffer genBuffers();
+	BVH(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const std::vector<uint8_t>& matIndices, BVHSplitMethod splitMethod = BVHSplitMethod::SAH) :
+		vertices(vertices), indices(indices), matIndices(matIndices), method(splitMethod) {}
+
+	PackedBVH build();
 
 private:
-	struct HittableInfo
-	{
-		AABB bound;
-		glm::vec3 centroid;
-		int index;
-	};
+	void build(int offset, const AABB& nodeBound, int l, int r);
 
 private:
-	void build(int offset, std::vector<HittableInfo>& hittableInfo, const AABB& nodeBound, int l, int r);
-
-private:
-	BVHSplitMethod splitMethod;
 	std::vector<glm::vec3> vertices;
-	std::vector<glm::vec3> normals;
 	std::vector<uint32_t> indices;
+	std::vector<PrimInfo> primInfo;
+	const std::vector<uint8_t> matIndices;
 	std::vector<AABB> bounds;
 	std::vector<int> sizeIndices;
+	BVHSplitMethod method;
 };
 

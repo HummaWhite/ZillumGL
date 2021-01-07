@@ -7,7 +7,6 @@ RayTest::RayTest(int maxSpp, bool limitSpp):
 	screenVA.addBuffer(screenVB, LAYOUT_POS2);
 
 	rayTestShader.load("res/shader/rayTest.shader");
-	rayTestShader.set1i("maxSpp", MAX_SPP);
 	postShader.load("res/shader/postEffects.shader");
 	postShader.set1f("gamma", 2.2f);
 	glfwSetInputMode(this->window(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -28,18 +27,28 @@ void RayTest::init()
 		frame[i].activateAttachmentTargets({ GL_COLOR_ATTACHMENT0 });
 	}
 
-	skybox.loadHDRPanorama("res/texture/010.hdr");
+	skybox.loadHDRPanorama("res/texture/084.hdr");
 	camera.setFOV(90.0f);
 
-	Model model("res/model/cube.obj");
-	BVH bvh(model.meshes());
-	bvhBuffer = bvh.genBuffers();
+	scene.addMaterial(Material{ glm::vec3(1.0f), 0.0f, 1.0f });
+	scene.addMaterial(Material{ glm::vec3(1.0f, 0.71f, 0.29f), 1.0f, 0.25f });
 
-	vertexBuffer.generateTexBuffer(*bvhBuffer.vertex, GL_RGB32F);
-	normalBuffer.generateTexBuffer(*bvhBuffer.normal, GL_RGB32F);
-	indexBuffer.generateTexBuffer(*bvhBuffer.index, GL_R32I);
-	boundBuffer.generateTexBuffer(*bvhBuffer.bound, GL_RGB32F);
-	sizeIndexBuffer.generateTexBuffer(*bvhBuffer.sizeIndex, GL_R32I);
+	auto teapot = std::make_shared<Model>("res/model/teapot20.obj", 1, glm::vec3(0.0f));
+	auto quad = std::make_shared<Model>("res/model/square.obj", 0, glm::vec3(0.0f), 100.0f);
+	scene.addObject(teapot);
+	scene.addObject(quad);
+
+	sceneBuffers = scene.genBuffers();
+
+	boxCount = sceneBuffers.bound->size() / sizeof(AABB);
+	vertexCount = sceneBuffers.vertex->size() / sizeof(glm::vec3);
+	triangleCount = sceneBuffers.index->size() / sizeof(uint32_t) / 3;
+
+	vertexBuffer.generateTexBuffer(*sceneBuffers.vertex, GL_RGB32F);
+	normalBuffer.generateTexBuffer(*sceneBuffers.normal, GL_RGB32F);
+	indexBuffer.generateTexBuffer(*sceneBuffers.index, GL_R32I);
+	boundBuffer.generateTexBuffer(*sceneBuffers.bound, GL_RGB32F);
+	sizeIndexBuffer.generateTexBuffer(*sceneBuffers.sizeIndex, GL_R32I);
 
 	rayTestShader.setTexture("vertices", vertexBuffer, 1);
 	rayTestShader.setTexture("normals", normalBuffer, 2);
@@ -47,8 +56,16 @@ void RayTest::init()
 	rayTestShader.setTexture("bounds", boundBuffer, 4);
 	rayTestShader.setTexture("sizeIndices", sizeIndexBuffer, 5);
 	rayTestShader.setTexture("skybox", skybox, 6);
+	rayTestShader.set1f("bvhDepth", glm::log2((float)boxCount));
+
+	materials = scene.materialSet();
+
+	camera.setPos({ 0.0f, -5.0f, 2.0f });
+	camera.setFOV(85.0f);
+	camera.setAspect((float)this->windowWidth() / this->windowHeight());
 
 	this->setupGUI();
+	this->reset();
 }
 
 void RayTest::renderLoop()
@@ -90,7 +107,7 @@ void RayTest::processKey(int key, int scancode, int action, int mode)
 		if (this->getKeyStatus(pressedKey) == GLFW_PRESS)
 		{
 			camera.move(pressedKey);
-			curSpp = 0;
+			reset();
 		}
 	}
 
@@ -99,7 +116,11 @@ void RayTest::processKey(int key, int scancode, int action, int mode)
 	{
 		if (F1Pressed)
 		{
-			if (cursorDisabled) glfwSetInputMode(this->window(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			if (cursorDisabled)
+			{
+				glfwSetInputMode(this->window(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+				firstCursorMove = true;
+			}
 			else glfwSetInputMode(this->window(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 			cursorDisabled ^= 1;
 			F1Pressed = false;
@@ -125,7 +146,7 @@ void RayTest::processCursor(float posX, float posY)
 
 	lastCursorX = posX;
 	lastCursorY = posY;
-	curSpp = 0;
+	reset();
 }
 
 void RayTest::processScroll(float offsetX, float offsetY)
@@ -141,10 +162,9 @@ void RayTest::renderFrame()
 	frame[curFrame].bind();
 	renderer.clear(0.0f, 0.0f, 0.0f);
 
-	glm::vec3 F = camera.pointing();
-	glm::vec3 U = glm::vec3(0.0f, 0.0f, 1.0f);
-	glm::vec3 R = glm::normalize(glm::cross(F, U));
-	U = glm::normalize(glm::cross(R, F));
+	glm::vec3 F = camera.front();
+	glm::vec3 U = camera.up();
+	glm::vec3 R = camera.right();
 
 	rayTestShader.setTexture("lastFrame", frameTex[curFrame ^ 1], 0);
 	rayTestShader.set1i("showBVH", showBVH);
@@ -155,23 +175,7 @@ void RayTest::renderFrame()
 	rayTestShader.setVec3("camPos", camera.pos());
 	rayTestShader.set1f("tanFOV", glm::tan(glm::radians(camera.FOV() * 0.5f)));
 	rayTestShader.set1f("camAsp", (float)this->windowWidth() / (float)this->windowHeight());
-
-	/*
-	rayTestShader.set1i("sphereCount", spheres.size());
-	const std::string tmp("sphereList[");
-	for (int i = 0; i < spheres.size(); i++)
-	{
-		rayTestShader.setVec3((tmp + std::to_string(i) + "].center").c_str(), spheres[i].center);
-		rayTestShader.set1f((tmp + std::to_string(i) + "].radius").c_str(), spheres[i].radius);
-		rayTestShader.setVec3((tmp + std::to_string(i) + "].albedo").c_str(), spheres[i].albedo);
-		rayTestShader.set1f((tmp + std::to_string(i) + "].metallic").c_str(), spheres[i].metallic);
-		rayTestShader.set1f((tmp + std::to_string(i) + "].roughness").c_str(), spheres[i].roughness);
-	}
-	*/
-
-	rayTestShader.setVec3("albedo", albedo);
-	rayTestShader.set1f("metallic", metallic);
-	rayTestShader.set1f("roughness", roughness);
+	//rayTestShader.set1i("boxIndex", boxIndex);
 
 	rayTestShader.set1i("spp", curSpp);
 
@@ -182,6 +186,17 @@ void RayTest::renderFrame()
 	postShader.setTexture("frameBuffer", frameTex[curFrame], 0);
 
 	renderer.draw(screenVA, postShader);
+}
+
+void RayTest::reset()
+{
+	curSpp = 0;
+	for (int i = 0; i < materials.size(); i++)
+	{
+		rayTestShader.setVec3(("materials[" + std::to_string(i) + "].albedo").c_str(), materials[i].albedo);
+		rayTestShader.set1f(("materials[" + std::to_string(i) + "].metallic").c_str(), materials[i].metallic);
+		rayTestShader.set1f(("materials[" + std::to_string(i) + "].roughness").c_str(), materials[i].roughness);
+	}
 }
 
 void RayTest::setupGUI()
@@ -202,16 +217,20 @@ void RayTest::renderGUI()
 
 	ImGui::Begin("RayTest");
 	{
-		if (ImGui::Checkbox("Show BVH", &showBVH))
+		ImGui::Text("BVH Nodes: %d\nTriangles: %d\nVertices: %d", boxCount, triangleCount, vertexCount);
+		if (ImGui::Checkbox("Show BVH", &showBVH)) reset();
+		
+		if (materials.size() > 0)
 		{
-			curSpp = 0;
-		}
-
-		if (ImGui::ColorEdit3("Albedo", glm::value_ptr(albedo)) ||
-			ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f) ||
-			ImGui::SliderFloat("Roughness", &roughness, 0.001f, 1.0f))
-		{
-			curSpp = 0;
+			ImGui::SliderInt("Material", &materialIndex, 0, materials.size() - 1);
+			auto& m = materials[materialIndex];
+			if (
+				ImGui::ColorEdit3("Albedo", glm::value_ptr(m.albedo)) ||
+				ImGui::SliderFloat("Metallic", &m.metallic, 0.0f, 1.0f) ||
+				ImGui::SliderFloat("Roughness", &m.roughness, 0.001f, 1.0f))
+			{
+				reset();
+			}
 		}
 
 		ImGui::Checkbox("Vertical Sync", &verticalSync);
@@ -229,39 +248,6 @@ void RayTest::renderGUI()
 		}
 	}
 	ImGui::End();
-
-	/*
-	ImGui::Begin("Objects");
-	{
-		if (spheres.size() > 0)
-		{
-			ImGui::SliderInt("Select", &sphereIndex, 0, spheres.size() - 1);
-			auto& sp = spheres[sphereIndex];
-			if (ImGui::DragFloat3("Center", glm::value_ptr(sp.center), 0.1f) ||
-				ImGui::DragFloat("Radius", &sp.radius, 0.01f, 0.0f) ||
-				ImGui::ColorEdit3("Albedo", glm::value_ptr(sp.albedo)) ||
-				ImGui::SliderFloat("Metallic", &sp.metallic, 0.0f, 1.0f) ||
-				ImGui::SliderFloat("Roughness", &sp.roughness, 0.001f, 1.0f))
-			{
-				curSpp = 0;
-			}
-		}
-		if (ImGui::Button("Add"))
-		{
-			spheres.push_back(TestSphere());
-			sphereIndex = spheres.size() - 1;
-			curSpp = 0;
-		}
-		if (ImGui::Button("Remove"))
-		{
-			auto iter = spheres.begin() + sphereIndex;
-			spheres.erase(iter);
-			sphereIndex = 0;
-			curSpp = 0;
-		}
-	}
-	ImGui::End();
-	*/
 
 	ImGui::EndFrame();
 	ImGui::Render();

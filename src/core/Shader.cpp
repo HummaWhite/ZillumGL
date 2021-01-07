@@ -164,6 +164,11 @@ void Shader::setTexture(const char* name, const Texture& tex, uint32_t slot)
 	set1i(name, slot);
 }
 
+void Shader::setUniformBlock(const Buffer& buffer, int binding)
+{
+	glUniformBufferEXT(m_ID, binding, buffer.ID());
+}
+
 int Shader::getUniformLocation(const char* name) const
 {
 	GLint location = glGetUniformLocation(m_ID, name);
@@ -190,10 +195,12 @@ void Shader::compileShader(const char* vertexSource, const char* fragmentSource,
 	GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	glShaderSource(vertexShader, 1, &vertexSource, NULL);
 	glCompileShader(vertexShader);
+	checkShaderCompileInfo(vertexShader, "Vertex");
 
 	GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
 	glCompileShader(fragmentShader);
+	checkShaderCompileInfo(fragmentShader, "Fragment");
 
 	GLuint geometryShader;
 	if (geometrySource != nullptr)
@@ -201,6 +208,7 @@ void Shader::compileShader(const char* vertexSource, const char* fragmentSource,
 		geometryShader = glCreateShader(GL_GEOMETRY_SHADER);
 		glShaderSource(geometryShader, 1, &geometrySource, NULL);
 		glCompileShader(geometryShader);
+		checkShaderCompileInfo(geometryShader, "Geometry");
 	}
 
 	m_ID = glCreateProgram();
@@ -209,20 +217,36 @@ void Shader::compileShader(const char* vertexSource, const char* fragmentSource,
 	if (geometrySource != nullptr)
 		glAttachShader(m_ID, geometryShader);
 	glLinkProgram(m_ID);
-
-	GLint compileSuccess, linkSuccess;
-	glGetProgramiv(m_ID, GL_COMPILE_STATUS, &compileSuccess);
-	glGetProgramiv(m_ID, GL_LINK_STATUS, &linkSuccess);
-	if ((!compileSuccess) || (!linkSuccess))
-	{
-		char info[512];
-		glGetProgramInfoLog(m_ID, 512, NULL, info);
-		std::cout << info << std::endl;
-		exit(-1);
-	}
+	checkShaderLinkInfo();
 
 	glDeleteShader(vertexShader);
 	glDeleteShader(fragmentShader);
 	if (geometrySource != nullptr)
 		glDeleteShader(geometryShader);
+}
+
+void Shader::checkShaderCompileInfo(uint32_t shaderId, const std::string& name)
+{
+	int param;
+	glGetShaderiv(shaderId, GL_COMPILE_STATUS, &param);
+	if (param != GL_TRUE)
+	{
+		const int length = 8192;
+		char info[length];
+		glGetShaderInfoLog(shaderId, length, nullptr, info);
+		std::cout << "[Shader] " << name << " compilation error\n" << info << "\n";
+	}
+}
+
+void Shader::checkShaderLinkInfo()
+{
+	int linkSuccess;
+	glGetProgramiv(m_ID, GL_LINK_STATUS, &linkSuccess);
+	if (linkSuccess != GL_TRUE)
+	{
+		const int length = 8192;
+		char info[length];
+		glGetProgramInfoLog(m_ID, length, nullptr, info);
+		std::cout << "[Shader] " << "link error\n" << info << "\n";
+	}
 }

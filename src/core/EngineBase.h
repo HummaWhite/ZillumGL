@@ -30,6 +30,7 @@
 #include "FrameBuffer.h"
 #include "CheckError.h"
 #include "Accelerator/BVH.h"
+#include "Scene.h"
 
 class EngineBase
 {

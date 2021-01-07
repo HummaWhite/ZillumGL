@@ -20,18 +20,10 @@ private:
 	void processResize(int width, int height);
 
 	void renderFrame();
+	void reset();
 
 	void setupGUI();
 	void renderGUI();
-
-	struct TestSphere
-	{
-		glm::vec3 center = glm::vec3(0.0f);
-		float radius = 1.0f;
-		glm::vec3 albedo = glm::vec3(1.0f);
-		float metallic = 0.0f;
-		float roughness = 1.0f;
-	};
 
 private:
 	Buffer screenVB;
@@ -53,19 +45,21 @@ private:
 
 	bool verticalSync = true;
 
-	std::vector<TestSphere> spheres;
-	int sphereIndex = 0;
-
-	BVHBuffer bvhBuffer;
+	Scene scene;
+	SceneBuffer sceneBuffers;
 	Texture vertexBuffer;
 	Texture normalBuffer;
 	Texture indexBuffer;
 	Texture boundBuffer;
 	Texture sizeIndexBuffer;
+	//Texture materialBuffer;
+	std::vector<Material> materials;
+	int materialIndex = 0;
 
-	glm::vec3 albedo = glm::vec3(1.0f);
-	float metallic = 0.0f;
-	float roughness = 1.0f;
+	int boxIndex = 0;
+	int boxCount;
+	int triangleCount;
+	int vertexCount;
 
 	bool showBVH = false;
 	bool cursorDisabled = false;

@@ -9,7 +9,6 @@
 class Buffer
 {
 public:
-	Buffer() : m_ID(0), m_ElementsCount(0), m_Size(0), m_Batched(false) {}
 	~Buffer();
 
 	void allocate(int size, const void* data, GLuint elementsCount, bool batched = false, GLenum type = GL_STATIC_DRAW);
@@ -21,8 +20,8 @@ public:
 	bool batched() const { return m_Batched; }
 
 private:
-	GLuint m_ID;
-	GLuint m_ElementsCount;
-	GLuint m_Size;
-	bool m_Batched;
+	GLuint m_ID = 0;
+	GLuint m_ElementsCount = 0;
+	GLuint m_Size = 0;
+	bool m_Batched = false;
 };
