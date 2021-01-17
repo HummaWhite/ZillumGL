@@ -271,7 +271,7 @@ bool boxHit(int id, Ray ray, out float tMin)
 	const float eps = 1e-6;
 	vec3 o = ray.ori;
 	vec3 d = ray.dir;
-	
+
 	if (abs(d.x) > 1.0 - eps)
 	{
 		if (o.y > pMin.y && o.y < pMax.y && o.z > pMin.z && o.z < pMax.z)
@@ -375,7 +375,7 @@ int bvhHit(Ray ray, inout float dist, bool quickCheck)
 {
 	dist = 1e8;
 	int closestHit = -1;
-	
+
 	int top = 0;
 	stack[top++] = 0;
 
@@ -478,12 +478,18 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 	return ggx1 * ggx2;
 }
 
-vec4 sampleCosineWeighted(vec3 N)
+vec3 sampleUniformHemisphere(vec3 N)
 {
 	float theta = rand(0.0, Pi * 2.0);
 	float phi = rand(0.0, Pi * 0.5);
-	vec3 randomVec = vec3(cos(theta) * sin(phi), sin(theta) * sin(phi), cos(phi));
-	return vec4(normalize(TBNMatrix(N) * randomVec), cos(phi) * PiInv);
+	vec3 V = vec3(cos(theta) * sin(phi), sin(theta) * sin(phi), cos(phi));
+	return normalize(TBNMatrix(N) * V);
+}
+
+vec4 sampleCosineWeighted(vec3 N)
+{
+	vec3 V = sampleUniformHemisphere(N);
+	return vec4(V, dot(V, N) * PiInv);
 }
 
 float pdfGGX(float NoH, float HoV, float a)
@@ -491,7 +497,7 @@ float pdfGGX(float NoH, float HoV, float a)
 	return distributionGGX(NoH, a) * NoH / (4.0 * HoV);
 }
 
-vec4 sampleGGX(vec2 xi, vec3 N, vec3 Wo, float roughness)
+vec3 sampleGGXNoPdf(vec2 xi, vec3 N, vec3 Wo, float roughness)
 {
 	float r4 = pow(roughness, 4.0);
 	float phi = 2.0 * Pi * xi.x;
@@ -502,18 +508,23 @@ vec4 sampleGGX(vec2 xi, vec3 N, vec3 Wo, float roughness)
 
 	vec3 H = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
 	H = normalize(TBNMatrix(N) * H);
-	vec3 L = normalize(H * 2.0 * dot(Wo, H) - Wo);
-	vec3 V = Wo;
-
-	float NdotH = dot(N, H);
-	float HdotV = dot(H, V);
-
-	return vec4(L, pdfGGX(NdotH, HdotV, roughness));
+	return normalize(H * 2.0 * dot(Wo, H) - Wo);
 }
 
-vec4 sampleGGX(vec3 N, vec3 Wo, float roughness)
+vec4 sampleGGX(vec2 xi, vec3 N, vec3 Wo, float roughness)
 {
-	return sampleGGX(randBox(), N, Wo, roughness);
+	vec3 Wi = sampleGGXNoPdf(xi, N, Wo, roughness);
+	vec3 H = normalize(Wi + Wo);
+
+	float NdotH = dot(N, H);
+	float HdotV = dot(H, Wo);
+
+	return vec4(Wi, pdfGGX(NdotH, HdotV, roughness));
+}
+
+vec3 sampleGGX(vec3 N, vec3 Wo, float roughness)
+{
+	return sampleGGXNoPdf(randBox(), N, Wo, roughness);
 }
 
 vec3 bsdf(int matId, vec3 Wo, vec3 Wi, vec3 N)
@@ -548,57 +559,24 @@ vec3 bsdf(int matId, vec3 Wo, vec3 Wi, vec3 N)
 	return (kD * albedo * PiInv + specular) * NdotL;
 }
 
-vec3 bsdf(int matId, vec3 Wo, vec3 Wi, vec3 N, bool diffuse)
-{
-	vec3 albedo = materials[matId].albedo;
-	float metallic = materials[matId].metallic;
-	float roughness = materials[matId].roughness;
-
-	vec3 L = Wi;
-	vec3 V = Wo;
-	vec3 H = normalize(V + L);
-
-	float NdotL = dot(N, L);
-	float NdotV = dot(N, V);
-
-	vec3 F0 = mix(vec3(0.04), albedo, metallic);
-	vec3 F = fresnelSchlickRoughness(dot(H, V), F0, roughness);
-
-	if (diffuse)
-	{
-		vec3 kD = (1.0 - F) * (1.0 - metallic);
-		return kD * albedo * PiInv * NdotL;
-	}
-
-	float D = distributionGGX(max(dot(N, H), 0.0), roughness);
-	float G = geometrySmith(N, V, L, roughness);
-
-	vec3 FDG = F * D * G;
-	float denominator = 4.0 * NdotV * NdotL + 1e-6f;
-	vec3 specular = FDG / denominator;
-
-	return specular * NdotL;
-}
-
 vec4 getSample(int matId, vec3 N, vec3 Wo)
 {
-	//return sampleCosineWeighted(N);
+	vec4 ret;
 	float metallic = materials[matId].metallic;
 	float roughness = materials[matId].roughness;
-	//bool sampleDiffuse = (rand() < 0.5 * (1.0 - metallic));
-	float pSpec = 1.0 / (2.0 - metallic);
-	bool sampleDiffuse = (rand() > pSpec); 
-	vec4 sp = sampleDiffuse ? sampleCosineWeighted(N) : sampleGGX(N, Wo, roughness);
-	//if (sampleDiffuse) sp.w = -sp.w;
 
-	vec3 Wi = sp.xyz;
+	float pSpec = 1.0 / (2.0 - metallic);
+	bool sampleDiffuse = (rand() > pSpec);
+	vec3 Wi = sampleDiffuse ? sampleCosineWeighted(N).xyz : sampleGGX(N, Wo, roughness);
+
+	ret.xyz = Wi;
 	vec3 H = normalize(Wi + Wo);
 
 	float pdfDiff = dot(Wi, N) * PiInv;
 	float pdfSpec = pdfGGX(dot(N, H), dot(H, Wo), roughness);
-	sp.w = lerp(pdfDiff, pdfSpec, pSpec);
+	ret.w = lerp(pdfDiff, pdfSpec, pSpec);
 
-	return sp;
+	return ret;
 }
 
 vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, int depth)
@@ -626,7 +604,6 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, int depth)
 		if (abs(pdf) < 1e-6) break;
 
 		vec3 bsdf = bsdf(matId, Wo, Wi, N);
-		if (pdf < 0.0) pdf = -pdf;
 
 		accumBsdf *= bsdf;
 		accumPdf *= pdf;
