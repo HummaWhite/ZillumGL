@@ -651,15 +651,11 @@ vec4 getSample(int matId, vec3 N, vec3 Wo)
 	bool sampleDiffuse = (rand() > spec);
 	vec3 Wi = sampleDiffuse ? sampleCosineWeighted(N).xyz : sampleGGXVNDF(randBox(), N, Wo, roughness * roughness);
 
-	// 朴素的GGX采样会产生大量无效的Wi，所以要特判免得这些样本被拿去求交从而浪费性能
-	// TODO: 优化GGX采样方式
 	float NoWi = dot(N, Wi);
 	if (NoWi < 0) return vec4(0.0);
 
 	ret.xyz = Wi;
 	vec3 H = normalize(Wi + Wo);
-
-	BUGVAL = vec3(aniso);
 
 	float pdfDiff = dot(Wi, N) * PiInv;
 	//float pdfSpec = pdfGGX(dot(N, H), dot(H, Wo), roughness * roughness);
