@@ -56,6 +56,7 @@ struct Material
 	vec3 albedo;
 	float metallic;
 	float roughness;
+	float anisotropic;
 };
 
 struct Light
@@ -96,6 +97,7 @@ uniform Light lights[MAX_LIGHTS];
 uniform int lightCount;
 
 bool BUG = false;
+vec3 BUGVAL = vec3(0.0);
 
 uint randSeed;
 uint hash(uint seed)
@@ -127,13 +129,30 @@ float noise(vec2 st)
 
 float rand(float vMin, float vMax)
 {
-	float r = rand();
 	return mix(vMin, vMax, rand());
 }
 
 vec2 randBox()
 {
-	return clamp(vec2(rand(), rand()), vec2(0.0), vec2(1.0));
+	return vec2(rand(), rand());
+}
+
+vec2 toConcentricDisk(vec2 v)
+{
+	if (v.x == 0.0 && v.y == 0.0) return vec2(0.0, 0.0);
+	v = v * 2.0 - 1.0;
+	float phi, r;
+	if (v.x * v.x > v.y * v.y)
+	{
+		r = v.x;
+		phi = Pi * v.y / v.x * 0.25;
+	}
+	else
+	{
+		r = v.y;
+		phi = Pi * 0.5 - Pi * v.x / v.y * 0.25;
+	}
+	return vec2(r * cos(phi), r * sin(phi));
 }
 
 float inverseBits(uint bits)
@@ -169,6 +188,11 @@ vec3 planeToSphere(vec2 uv)
 	float theta = uv.x * Pi * 2.0;
 	float phi = uv.y * Pi;
 	return vec3(cos(theta) * sin(phi), sin(theta) * sin(phi), cos(phi));
+}
+
+vec3 getEnvRadiance(vec3 dir)
+{
+	return texture(skybox, sphereToPlane(dir)).rgb;
 }
 
 vec3 rayPoint(Ray ray, float t)
@@ -259,9 +283,10 @@ SurfaceInfo triangleSurfaceInfo(int id, vec3 p)
 	float areaInv = 1.0 / length(cross(b - a, c - a));
 	float la = length(cross(pb, pc)) * areaInv;
 	float lb = length(cross(pc, pa)) * areaInv;
-	float lc = length(cross(pa, pb)) * areaInv;
+	float lc = 1 - la - lb;
 
 	ret.norm = normalize(na * la + nb * lb + nc * lc);
+
 	return ret;
 }
 
@@ -432,37 +457,34 @@ SceneHitInfo sceneHit(Ray ray)
 	return ret;
 }
 
+vec3 getTangent(vec3 N)
+{
+	return (abs(N.z) > 0.999) ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+}
+
 mat3 TBNMatrix(vec3 N)
 {
-	vec3 T = (abs(N.z) > 0.99) ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+	vec3 T = getTangent(N);
 	vec3 B = normalize(cross(N, T));
 	T = cross(B, N);
 	return mat3(T, B, N);
 }
 
-vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+vec3 fresnelSchlick(float cosTheta, vec3 F0, float roughness)
 {
 	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
-float distributionGGX(float NdotH, float roughness)
+vec2 getAlpha(float roughness, float aniso)
 {
-	if (NdotH < 1e-6) return 0.0;
-
-	float a = roughness * roughness;
-	float a2 = a * a;
-	float NdotH2 = NdotH * NdotH;
-
-	float nom = a2;
-	float denom = NdotH2 * (a2 - 1.0) + 1.0;
-	denom = denom * denom * Pi;
-	return nom / denom;
+	float r2 = roughness * roughness;
+	float al = sqrt(1.0 - aniso * 0.9);
+	return vec2(r2 / al, r2 * al);
 }
 
-float geometrySchlickGGX(float cosTheta, float roughness)
+float geometrySchlick(float cosTheta, float alpha)
 {
-	float r = roughness + 1.0;
-	float k = roughness * roughness * 0.5;
+	float k = alpha * 0.5;
 
 	float nom = cosTheta;
 	float denom = cosTheta * (1.0 - k) + k;
@@ -470,13 +492,13 @@ float geometrySchlickGGX(float cosTheta, float roughness)
 	return nom / denom;
 }
 
-float geometrySmith(vec3 N, vec3 Wo, vec3 Wi, float roughness)
+float geometrySmith(vec3 N, vec3 Wo, vec3 Wi, float alpha)
 {
-	float NdotV = satDot(N, Wo);
-	float NdotL = satDot(N, Wi);
+	float NoWi = satDot(N, Wo);
+	float NoWo = satDot(N, Wi);
 
-	float ggx2 = geometrySchlickGGX(NdotV, roughness);
-	float ggx1 = geometrySchlickGGX(NdotL, roughness);
+	float ggx2 = geometrySchlick(NoWi, alpha);
+	float ggx1 = geometrySchlick(NoWo, alpha);
 
 	return ggx1 * ggx2;
 }
@@ -495,41 +517,92 @@ vec4 sampleCosineWeighted(vec3 N)
 	return vec4(vec, max(dot(vec, N), 0.0) * PiInv);
 }
 
-float pdfGGX(float NoH, float HoV, float a)
+float GGX(float cosTheta, float alpha)
 {
-	return distributionGGX(NoH, a) * NoH / (4.0 * HoV);
+	if (cosTheta < 1e-6) return 0.0;
+
+	float a2 = alpha * alpha;
+
+	float nom = a2;
+	float denom = cosTheta * cosTheta * (a2 - 1.0) + 1.0;
+	denom = denom * denom * Pi;
+	return nom / denom;
 }
 
-vec3 sampleGGXNoPdf(vec2 xi, vec3 N, vec3 Wo, float roughness)
+float GGX(float cosTheta, float sinPhi, vec2 alpha)
 {
-	float r4 = pow(roughness, 4.0);
-	float phi = 2.0 * Pi * xi.x;
-	float sinTheta, cosTheta;
+	if (cosTheta < 1e-6) return 0.0;
 
-	cosTheta = sqrt((1.0 - xi.y) / (1.0 + (r4 - 1.0) * xi.y));
-	sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+	float sinPhi2 = sinPhi * sinPhi;
 
-	vec3 H = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+	float p = (1.0 - sinPhi2) / (alpha.x * alpha.x) + sinPhi2 / (alpha.y * alpha.y);
+	float k = 1.0 + (p - 1) * (1.0 - cosTheta * cosTheta);
+	k = k * k * Pi * alpha.x * alpha.y;
+
+	return 1.0 / k;
+}
+
+float GGXVNDF(float cosTheta, float NoWo, float MoWo, float alpha)
+{
+	return geometrySchlick(NoWo, alpha) * GGX(cosTheta, alpha) * MoWo / NoWo;
+}
+
+float pdfGGX(float cosTheta, float MoWo, float alpha)
+{
+	return GGX(cosTheta, alpha) * cosTheta / (4.0 * MoWo);
+}
+
+float pdfGGX(float cosTheta, float sinPhi, float MoWo, vec2 alpha)
+{
+	return GGX(cosTheta, sinPhi, alpha) * cosTheta / (4.0 * MoWo);
+}
+
+float pdfGGXVNDF(vec3 N, vec3 M, vec3 Wo, vec3 Wi, float alpha)
+{
+	return GGXVNDF(dot(N, M), dot(N, Wo), satDot(N, Wo), alpha) / (4.0 * dot(N, Wo));
+}
+
+vec3 sampleGGX(vec2 xi, vec3 N, vec3 Wo, float alpha)
+{
+	xi = toConcentricDisk(xi);
+
+	vec3 H = vec3(xi.x, xi.y, sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y)));
+	H = normalize(H * vec3(alpha, alpha, 1.0));
 	H = normalize(TBNMatrix(N) * H);
-	vec3 Wi = normalize(H * 2.0 * dot(Wo, H) - Wo);
 
-	return Wi;
+	return reflect(-Wo, H);
 }
 
-vec4 sampleGGX(vec2 xi, vec3 N, vec3 Wo, float roughness)
+vec3 sampleGGX(vec2 xi, vec3 N, vec3 Wo, vec2 alpha)
 {
-	vec3 Wi = sampleGGXNoPdf(xi, N, Wo, roughness);
-	vec3 H = normalize(Wi + Wo);
+	xi = toConcentricDisk(xi);
+	vec3 H = vec3(xi.x, xi.y, sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y)));
+	H = normalize(H * vec3(alpha, 1.0));
+	H = normalize(TBNMatrix(N) * H);
 
-	float NdotH = satDot(N, H);
-	float HdotV = satDot(H, Wo);
-
-	return vec4(Wi, pdfGGX(NdotH, HdotV, roughness));
+	return reflect(-Wo, H);
 }
 
-vec3 sampleGGX(vec3 N, vec3 Wo, float roughness)
+vec3 sampleGGXVNDF(vec2 xi, vec3 N, vec3 Wo, float alpha)
 {
-	return sampleGGXNoPdf(randBox(), N, Wo, roughness);
+	mat3 TBN = TBNMatrix(N);
+	mat3 TBNinv = inverse(TBN);
+
+	vec3 Vh = normalize((TBNinv * Wo) * vec3(alpha, alpha, 1.0));
+
+	float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+	vec3 T1 = lensq > 0.0 ? vec3(-Vh.y, Vh.x, 0.0) / sqrt(lensq) : vec3(1.0, 0.0, 0.0);
+	vec3 T2 = cross(Vh, T1);
+
+	xi = toConcentricDisk(xi);
+	float s = 0.5 * (1.0 + Vh.z);
+	xi.y = (1.0 - s) * sqrt(1.0 - xi.x * xi.x) + s * xi.y;
+
+	vec3 H = T1 * xi.x + T2 * xi.y + Vh * sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y));
+	H = normalize(vec3(H.x * alpha, H.y * alpha, max(0.0, H.z)));
+	H = normalize(TBN * H);
+
+	return reflect(-Wo, H);
 }
 
 vec3 bsdf(int matId, vec3 Wo, vec3 Wi, vec3 N)
@@ -537,17 +610,21 @@ vec3 bsdf(int matId, vec3 Wo, vec3 Wi, vec3 N)
 	vec3 albedo = materials[matId].albedo;
 	float metallic = materials[matId].metallic;
 	float roughness = materials[matId].roughness;
+	float alpha = roughness * roughness;
 
 	vec3 H = normalize(Wi + Wo);
+
+	if (dot(N, Wo) < 0) return vec3(0.0);
+	if (dot(N, Wi) < 0) return vec3(0.0);
 
 	float NdotL = satDot(N, Wi);
 	float NdotV = satDot(N, Wo);
 
 	vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-	vec3	F = fresnelSchlickRoughness(satDot(H, Wo), F0, roughness);
-	float	D = distributionGGX(satDot(N, H), roughness);
-	float	G = geometrySmith(N, Wo, Wi, roughness);
+	vec3	F = fresnelSchlick(satDot(H, Wo), F0, roughness);
+	float	D = GGX(satDot(N, H), alpha);
+	float	G = geometrySmith(N, Wo, Wi, alpha);
 
 	vec3 kS = F;
 	vec3 kD = vec3(1.0) - kS;
@@ -557,9 +634,9 @@ vec3 bsdf(int matId, vec3 Wo, vec3 Wi, vec3 N)
 	float denominator = 4.0 * NdotV * NdotL;
 	if (denominator < 1e-7) return vec3(0.0);
 
-	vec3 specular = FDG / denominator;
+	vec3 glossy = FDG / denominator;
 
-	return (kD * albedo * PiInv + specular) * NdotL;
+	return (kD * albedo * PiInv + glossy) * NdotL;
 }
 
 vec4 getSample(int matId, vec3 N, vec3 Wo)
@@ -567,18 +644,27 @@ vec4 getSample(int matId, vec3 N, vec3 Wo)
 	vec4 ret;
 	float metallic = materials[matId].metallic;
 	float roughness = materials[matId].roughness;
+	float aniso = materials[matId].anisotropic;
+	vec2 alpha = getAlpha(roughness, aniso);
 
 	float spec = 1.0 / (2.0 - metallic);
 	bool sampleDiffuse = (rand() > spec);
-	vec3 Wi = sampleDiffuse ? sampleCosineWeighted(N).xyz : sampleGGX(N, Wo, roughness);
+	vec3 Wi = sampleDiffuse ? sampleCosineWeighted(N).xyz : sampleGGXVNDF(randBox(), N, Wo, roughness * roughness);
 
-	if (dot(Wi, N) < 0) return vec4(0.0);
+	// 朴素的GGX采样会产生大量无效的Wi，所以要特判免得这些样本被拿去求交从而浪费性能
+	// TODO: 优化GGX采样方式
+	float NoWi = dot(N, Wi);
+	if (NoWi < 0) return vec4(0.0);
 
 	ret.xyz = Wi;
 	vec3 H = normalize(Wi + Wo);
 
+	BUGVAL = vec3(aniso);
+
 	float pdfDiff = dot(Wi, N) * PiInv;
-	float pdfSpec = pdfGGX(dot(N, H), dot(H, Wo), roughness);
+	//float pdfSpec = pdfGGX(dot(N, H), dot(H, Wo), roughness * roughness);
+	//float pdfSpec = pdfGGX(dot(N, H), dot(cross(H, N), getTangent(N)), dot(H, Wo), alpha);
+	float pdfSpec = pdfGGXVNDF(N, H, Wo, Wi, roughness * roughness);
 	ret.w = mix(pdfDiff, pdfSpec, spec);
 
 	return ret;
@@ -593,20 +679,18 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, int depth)
 
 	for (int bounce = 0; ; bounce++)
 	{
-		//if (accumPdf < 1e-10) break;
 		if (bounce == depth) break;
-
-		int matId = texelFetch(matIndices, id).r;
 
 		vec3 P = ray.ori;
 		vec3 Wo = -ray.dir;
 		vec3 N = surfaceInfo.norm;
 
+		int matId = texelFetch(matIndices, id).r;
 		vec4 samp = getSample(matId, N, Wo);
 		vec3 Wi = samp.xyz;
 
 		float pdf = samp.w;
-		if (pdf < 1e-10) break;
+		if (pdf < 1e-12) break;
 
 		vec3 bsdf = bsdf(matId, Wo, Wi, N);
 
@@ -621,7 +705,7 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, int depth)
 		SceneHitInfo scHitInfo = sceneHit(newRay);
 		if (scHitInfo.shapeId == -1)
 		{
-			result += clamp(texture(skybox, sphereToPlane(newRay.dir)).rgb * beta, 0.0, 1e8);
+			result += getEnvRadiance(Wi) * beta;
 			break;
 		}
 
@@ -663,7 +747,7 @@ void main()
 	}
 	else if (scHitInfo.shapeId == -1)
 	{
-		result = texture(skybox, sphereToPlane(rayDir)).rgb;
+		result = getEnvRadiance(rayDir);
 	}
 	else
 	{
@@ -677,7 +761,7 @@ void main()
 	if (isnan(result.x) || isnan(result.y) || isnan(result.z)) result = lastRes;
 	else result = (lastRes * float(spp) + result) / float(spp + 1);
 
-	if (BUG) result = vec3(1e8, 0.0, 0.0);
+	if (BUG) result = BUGVAL;
 
 	FragColor = vec4(result, 1.0);
 }
