@@ -28,7 +28,7 @@ void Texture::loadSingle(const std::string& filePath, GLuint internalFormat)
 	GLubyte* data = stbi_load(filePath.c_str(), &m_Width, &m_Height, &m_BitsPerPixel, 4);
 	if (data == nullptr)
 	{
-		std::cout << "Error: unable to load texture: " << filePath << std::endl;
+		std::cout << "[Error]\t\tunable to load texture: " << filePath << std::endl;
 		return;
 	}
 
@@ -38,13 +38,13 @@ void Texture::loadSingle(const std::string& filePath, GLuint internalFormat)
 	if (data != nullptr) stbi_image_free(data);
 }
 
-void Texture::loadFloat(const std::string& filePath)
+void Texture::loadHDRPanorama(const std::string& filePath)
 {
 	//stbi_set_flip_vertically_on_load(1);
 	float* data = stbi_loadf(filePath.c_str(), &m_Width, &m_Height, &m_BitsPerPixel, 0);
 	if (data == nullptr)
 	{
-		std::cout << "Error: unable to load texture: " << filePath << std::endl;
+		std::cout << "[Error]\t\tunable to load texture: " << filePath << std::endl;
 		return;
 	}
 
@@ -52,32 +52,6 @@ void Texture::loadFloat(const std::string& filePath)
 	allocate2D(GL_RGB16F, m_Width, m_Height, GL_RGB, GL_FLOAT, data);
 
 	if (data != nullptr) stbi_image_free(data);
-}
-
-void Texture::loadFloat(const float* data, int width, int height)
-{
-	if (data == nullptr)
-	{
-		std::cout << "Error: unable to load texture. " << std::endl;
-		return;
-	}
-
-	m_Width = width, m_Height = height;
-
-	glCreateTextures(GL_TEXTURE_2D, 1, &m_ID);
-	allocate2D(GL_RGB16F, m_Width, m_Height, GL_RGB, GL_FLOAT, data);
-}
-
-void Texture::loadData(const void* data, size_t bytes, GLuint internalFormat)
-{
-	glCreateTextures(GL_TEXTURE_1D, 1, &m_ID);
-	glTextureImage1DEXT(m_ID, GL_TEXTURE_1D, 0, internalFormat, bytes, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-}
-
-void Texture::loadHDRPanorama(const std::string& filePath)
-{
-	loadFloat(filePath);
-	setFilterAndWrapping(GL_LINEAR, GL_CLAMP_TO_EDGE);
 }
 
 void Texture::generateTexBuffer(const Buffer& buffer, GLenum format)
@@ -114,7 +88,20 @@ void Texture::generateMipmap()
 	glGenerateTextureMipmap(m_ID);
 }
 
+void Texture::loadData(GLuint internalFormat, int width, int height, GLuint sourceFormat, GLuint dataType, const void* data)
+{
+	glCreateTextures(GL_TEXTURE_2D, 1, &m_ID);
+	allocate2D(internalFormat, width, height, sourceFormat, dataType, data);
+}
+
 void Texture::allocate2D(GLuint internalFormat, int width, int height, GLuint sourceFormat, GLuint dataType, const void* data)
 {
 	glTextureImage2DEXT(m_ID, GL_TEXTURE_2D, 0, internalFormat, width, height, 0, sourceFormat, dataType, data);
+	setFilterAndWrapping(GL_LINEAR, GL_CLAMP_TO_EDGE);
+}
+
+void BufferTexture::allocate(int size, const void* data, GLenum format)
+{
+	buf.allocate(size, data, 0);
+	generateTexBuffer(buf, format);
 }

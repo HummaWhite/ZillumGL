@@ -36,35 +36,45 @@ private:
 	FrameBuffer frame[2];
 	Texture frameTex[2];
 	int curFrame = 0;
+	int freeCounter = 0;
 
-	Texture skybox;
+	std::shared_ptr<EnvironmentMap> envMap;
+	float envStrength = 1.0f;
 
 	const int MAX_SPP;
 	int curSpp = 0;
 	bool limitSpp;
 
-	bool verticalSync = true;
+	bool verticalSync = false;
 
 	Scene scene;
 	SceneBuffer sceneBuffers;
-	Texture vertexBuffer;
-	Texture normalBuffer;
-	Texture indexBuffer;
-	Texture boundBuffer;
-	Texture sizeIndexBuffer;
-	//Texture materialBuffer;
+	
 	std::vector<Material> materials;
 	int materialIndex = 0;
+
+	std::vector<Light> lights;
+	int lightIndex = 0;
+
+	Texture albedoMap;
+	Texture matallicMap;
+	Texture roughnessMap;
+	Texture normalMap;
+
+	std::vector<std::string> envList;
+	std::string envStr;
 
 	int boxIndex = 0;
 	int boxCount;
 	int triangleCount;
 	int vertexCount;
 
+	int toneMapping = 2;
 	bool showBVH = false;
 	bool cursorDisabled = false;
 	bool firstCursorMove = true;
 	int lastCursorX = 0;
 	int lastCursorY = 0;
 	bool F1Pressed = false;
+	bool envImportanceSample = false;
 };

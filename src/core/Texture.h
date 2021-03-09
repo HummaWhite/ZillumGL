@@ -24,11 +24,6 @@ public:
 	void generateDepth2D(int width, int height, GLuint format);
 
 	void loadSingle(const std::string& filePath, GLuint internalFormat = GL_RGBA);
-	void loadFloat(const std::string& filePath);
-
-	void loadFloat(const float* data, int width, int height);
-	void loadData(const void* data, size_t bytes, GLuint internalFormat);
-
 	void loadHDRPanorama(const std::string& filePath);
 
 	void generateTexBuffer(const Buffer& buffer, GLenum format);
@@ -40,10 +35,24 @@ public:
 
 	void generateMipmap();
 
+	void loadData(GLuint internalFormat, int width, int height, GLuint sourceFormat, GLuint dataType, const void* data);
+
 private:
 	void allocate2D(GLuint internalFormat, int width, int height, GLuint sourceFormat, GLuint dataType, const void* data = nullptr);
 
 private:
 	GLuint m_ID;
 	int m_Width, m_Height, m_BitsPerPixel;
+};
+
+class BufferTexture:
+	public Texture
+{
+public:
+	void allocate(int size, const void* data, GLenum format);
+
+	int size() const { return buf.size(); }
+
+private:
+	Buffer buf;
 };
