@@ -18,6 +18,12 @@ float rand()
 	return float(randSeed) * (1.0 / 4294967296.0);
 }
 
+uint randUint(uint vMin, uint vMax)
+{
+	randSeed = hash(randSeed);
+	return randSeed % (vMax - vMin);
+}
+
 float noise(float x)
 {
 	float y = fract(sin(x) * 100000.0);

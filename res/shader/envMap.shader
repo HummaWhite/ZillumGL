@@ -3,7 +3,9 @@
 
 uniform float envStrength;
 uniform sampler2D envMap;
-uniform sampler2D envCdfTable;
+uniform isampler2D envAliasTable;
+uniform sampler2D envAliasProb;
+uniform float envSum;
 
 const vec3 BRIGHTNESS = vec3(0.299, 0.587, 0.114);
 
@@ -12,15 +14,9 @@ vec3 envGetRadiance(vec3 Wi)
 	return texture(envMap, sphereToPlane(Wi)).rgb * envStrength;
 }
 
-float envFetchCdf(int x, int y)
-{
-	return texelFetch(envCdfTable, ivec2(x, y), 0).r;
-}
-
 float envGetPortion(vec3 Wi)
 {
-	ivec2 size = textureSize(envMap, 0).xy;
-	return dot(envGetRadiance(Wi), BRIGHTNESS) / envFetchCdf(size.x, size.y - 1);
+	return dot(envGetRadiance(Wi), BRIGHTNESS) / envSum;
 }
 
 float envPdfLi(vec3 Wi)
@@ -34,33 +30,22 @@ vec4 envImportanceSample()
 	ivec2 size = textureSize(envMap, 0).xy;
 	int w = size.x, h = size.y;
 
-	float sum = envFetchCdf(w, h - 1);
+	int rx = int(randUint(0, h));
+	float ry = rand();
 
-	int col, row;
-	float rowVal = rand(0.0, sum);
+	ivec2 rTex = ivec2(w, rx);
+	int row = (ry < texelFetch(envAliasProb, rTex, 0).r) ? rx : texelFetch(envAliasTable, rTex, 0).r;
 
-	int l = 0, r = h - 1;
-	while (l != r)
-	{
-		int m = (l + r) >> 1;
-		if (rowVal >= envFetchCdf(w, m)) l = m + 1;
-		else r = m;
-	}
-	row = l;
+	int cx = int(randUint(0, w));
+	float cy = rand();
 
-	float colVal = rand(0.0, envFetchCdf(w - 1, row));
-	l = 0, r = w - 1;
-	while (l != r)
-	{
-		int m = (l + r) >> 1;
-		if (colVal >= envFetchCdf(m, row)) l = m + 1;
-		else r = m;
-	}
-	col = l;
+	ivec2 cTex = ivec2(cx, row);
+	int col = (cy < texelFetch(envAliasProb, cTex, 0).r) ? cx : texelFetch(envAliasTable, cTex, 0).r;
 
 	float sinTheta = sin(Pi * (float(row) + 0.5) / float(h));
 	vec2 uv = vec2(float(col) + 0.5, float(row + 0.5)) / vec2(float(w), float(h));
 	vec3 Wi = planeToSphere(uv);
+	float pdf = envPdfLi(Wi);
 
-	return vec4(Wi, envPdfLi(Wi));
+	return vec4(Wi, pdf);
 }

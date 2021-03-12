@@ -55,7 +55,7 @@ void RayTest::init()
 	scene.addMaterial(Material{ glm::vec3(0.0f), 0.0f, 0.15f });
 	scene.addMaterial(Material{ glm::vec3(1.0f), 1.0f, 0.15f });
 
-	//auto car = std::make_shared<Model>("res/model/Huracan.obj", 1, glm::vec3(0.0f), glm::vec3(1.0f));
+	//auto car = std::make_shared<Model>("res/model/dragon2_full.obj", 1, glm::vec3(0.0f), glm::vec3(0.1f));
 
 	//scene.addObject(car);
 	//scene.addObject(std::make_shared<Model>("res/model/sphere80.obj", 1, glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f), glm::vec3(0.0f, 90.0f, 0.0f)));
@@ -79,8 +79,11 @@ void RayTest::init()
 	rayTestShader.setTexture("sizeIndices", *sceneBuffers.sizeIndex, 6);
 	rayTestShader.setTexture("matIndices", *sceneBuffers.matIndex, 7);
 	rayTestShader.setTexture("envMap", envMap->getEnvMap(), 8);
-	rayTestShader.setTexture("envCdfTable", envMap->getCdfTable(), 9);
+	rayTestShader.setTexture("envAliasTable", envMap->getAliasTable(), 9);
+	rayTestShader.setTexture("envAliasProb", envMap->getAliasProb(), 10);
+	rayTestShader.set1f("envSum", envMap->sum());
 	rayTestShader.set1f("bvhDepth", glm::log2((float)boxCount));
+	postShader.set1i("toneMapping", toneMapping);
 
 	materials = scene.materialSet();
 	lights = scene.lightSet();
@@ -220,8 +223,6 @@ void RayTest::reset()
 		rayTestShader.setVec3(("lights[" + std::to_string(i) + "].norm").c_str(), norm);
 		rayTestShader.setVec3(("lights[" + std::to_string(i) + "].radiosity").c_str(), lights[i].radiosity);
 	}
-	rayTestShader.set1f("envStrength", envStrength);
-	rayTestShader.set1i("envImportance", envImportanceSample);
 	rayTestShader.set1i("showBVH", showBVH);
 
 	rayTestShader.setVec3("camF", camera.front());
@@ -231,7 +232,8 @@ void RayTest::reset()
 	rayTestShader.set1f("tanFOV", glm::tan(glm::radians(camera.FOV() * 0.5f)));
 	rayTestShader.set1f("camAsp", (float)this->windowWidth() / (float)this->windowHeight());
 
-	postShader.set1i("toneMapping", toneMapping);
+	rayTestShader.set1f("envStrength", envStrength);
+	rayTestShader.set1i("envImportance", envImportanceSample);
 }
 
 void RayTest::setupGUI()
@@ -289,14 +291,13 @@ void RayTest::renderGUI()
 			envMap = std::make_shared<EnvironmentMap>();
 			envMap->load(envList[tmp]);
 			rayTestShader.setTexture("envMap", envMap->getEnvMap(), 8);
-			rayTestShader.setTexture("envCdfTable", envMap->getCdfTable(), 9);
+			rayTestShader.setTexture("envAliasTable", envMap->getAliasTable(), 9);
+			rayTestShader.setTexture("envAliasProb", envMap->getAliasProb(), 10);
+			rayTestShader.set1f("envSum", envMap->sum());
 			reset();
 		}
 
-		if (ImGui::Checkbox("Env Importance", &envImportanceSample))
-		{
-			reset();
-		}
+		if (ImGui::Checkbox("Env Importance", &envImportanceSample)) reset();
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(-100);
@@ -304,7 +305,10 @@ void RayTest::renderGUI()
 		ImGui::PopItemWidth();
 
 		const char* tones[] = { "None", "Reinhard", "Filmic", "ACES" };
-		if (ImGui::Combo("ToneMapping", &toneMapping, tones, IM_ARRAYSIZE(tones))) reset();
+		if (ImGui::Combo("ToneMapping", &toneMapping, tones, IM_ARRAYSIZE(tones)))
+		{
+			postShader.set1i("toneMapping", toneMapping);
+		}
 
 		if (ImGui::Button("Save Image"))
 		{
