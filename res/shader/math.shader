@@ -106,3 +106,8 @@ vec4 sampleCosineWeighted(vec3 N)
 	vec3 vec = sampleUniformHemisphere(N);
 	return vec4(vec, satDot(vec, N) * PiInv);
 }
+
+bool sameHemisphere(vec3 N, vec3 A, vec3 B)
+{
+	return dot(N, A) * dot(N, B) > 0;
+}

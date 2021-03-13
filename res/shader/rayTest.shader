@@ -54,14 +54,6 @@ struct SceneHitInfo
 	float dist;
 };
 
-struct Material
-{
-	vec3 albedo;
-	float metallic;
-	float roughness;
-	float anisotropic;
-};
-
 struct Light
 {
 	vec3 va;
@@ -93,9 +85,6 @@ uniform isamplerBuffer indices;
 uniform samplerBuffer bounds;
 uniform isamplerBuffer sizeIndices;
 uniform isamplerBuffer matIndices;
-
-const int MAX_MATERIALS = 20;
-uniform Material materials[MAX_MATERIALS];
 
 const int MAX_LIGHTS = 8;
 uniform Light lights[MAX_LIGHTS];
@@ -436,44 +425,43 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, int depth)
 
 		int matId = texelFetch(matIndices, id).r;
 		vec3 albedo = materials[matId].albedo;
-		float metallic = materials[matId].metallic;
+		int type = materials[matId].type;
+		
+		float arg = (type == MetalWorkflow) ? materials[matId].metallic : materials[matId].ior;
 		float roughness = materials[matId].roughness;
 
-		/*
-		for (int i = 0; i < lightCount; i++)
-		{
-			vec3 lp = lightRandPoint(i);
-			vec3 ldir = lp - P;
-
-			float ldist = length(ldir);
-			ldir = normalize(ldir);
-
-			Ray lray;
-			lray.ori = P + ldir * 1e-4;
-			lray.dir = ldir;
-
-			if (bvhHit(lray, ldist, true) == 0) continue;
-
-			vec3 lrad = lightGetRadiance(i, -ldir, ldist);
-			result += bsdf(matId, Wo, ldir, N) * lrad * beta;
-		}
-		*/
 		if (envImportance)
 		{
-			EnvSample envSamp = getEnvSample(P);
-			float bsdfPdf = metalWorkflowPdf(Wo, envSamp.Wi, N, metallic, roughness * roughness);
-			float weight = heuristic(envSamp.pdf, 1, bsdfPdf, 1);
-			result += metalWorkflowBsdf(Wo, envSamp.Wi, N, albedo, metallic, roughness) * beta * satDot(N, envSamp.Wi) * envSamp.coef * weight;
+			if (type == Dielectric)
+			{
+				if (!approximateDelta(roughness))
+				{
+					EnvSample envSamp = getEnvSample(P);
+					float bsdfPdf = dielectricPdf(Wo, envSamp.Wi, N, arg, roughness);
+					float weight = heuristic(envSamp.pdf, 1, bsdfPdf, 1);
+					result += dielectricBsdf(Wo, envSamp.Wi, N, albedo, arg, roughness) * beta * satDot(N, envSamp.Wi) * envSamp.coef * weight;
+				}
+			}
+			else
+			{
+				EnvSample envSamp = getEnvSample(P);
+				float bsdfPdf = metalWorkflowPdf(Wo, envSamp.Wi, N, arg, roughness * roughness);
+				float weight = heuristic(envSamp.pdf, 1, bsdfPdf, 1);
+				result += metalWorkflowBsdf(Wo, envSamp.Wi, N, albedo, arg, roughness) * beta * satDot(N, envSamp.Wi) * envSamp.coef * weight;
+			}
 		}
 
-		BsdfSample samp = metalWorkflowGetSample(N, Wo, albedo, metallic, roughness);
+		BsdfSample samp = (type == MetalWorkflow) ?
+			metalWorkflowGetSample(N, Wo, albedo, arg, roughness) :
+			dielectricGetSample(N, Wo, albedo, arg, roughness);
+
 		vec3 Wi = samp.Wi;
 		float bsdfPdf = samp.pdf;
 		vec3 bsdf = samp.bsdf;
 		uint flag = samp.flag;
 
-		if (bsdfPdf < 1e-12) break;
-		beta *= bsdf / bsdfPdf * satDot(N, Wi);
+		if (bsdfPdf < 1e-8) break;
+		beta *= bsdf / bsdfPdf * ((flag == SpecRefl || flag == SpecTrans) ? 1.0 : absDot(N, Wi));
 
 		Ray newRay;
 		newRay.ori = P + Wi * 1e-4;
@@ -485,8 +473,11 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, int depth)
 			float weight = 1.0;
 			if (envImportance)
 			{
-				float envPdf = envPdfLi(Wi);
-				weight = heuristic(bsdfPdf, 1, envPdf, 1);
+				if (type != Dielectric || !approximateDelta(roughness))
+				{
+					float envPdf = envPdfLi(Wi);
+					weight = heuristic(bsdfPdf, 1, envPdf, 1);
+				}
 			}
 			result += envGetRadiance(Wi) * beta * weight;
 			break;
