@@ -6,8 +6,16 @@ uniform sampler2D envMap;
 uniform isampler2D envAliasTable;
 uniform sampler2D envAliasProb;
 uniform float envSum;
+uniform bool envImportance;
 
 const vec3 BRIGHTNESS = vec3(0.299, 0.587, 0.114);
+
+struct EnvSample
+{
+	vec3 Wi;
+	vec3 coef;
+	float pdf;
+};
 
 vec3 envGetRadiance(vec3 Wi)
 {
@@ -48,4 +56,25 @@ vec4 envImportanceSample()
 	float pdf = envPdfLi(Wi);
 
 	return vec4(Wi, pdf);
+}
+
+EnvSample envImportanceSample(vec3 x)
+{
+	EnvSample samp;
+	vec4 sp = envImportanceSample();
+	samp.Wi = sp.xyz;
+	samp.pdf = sp.w;
+
+	Ray ray;
+	ray.ori = x + samp.Wi * 1e-4;
+	ray.dir = samp.Wi;
+	float dist = 1e6;
+	if (bvhHit(ray, dist, true) == 0)
+	{
+		samp.coef = vec3(0.0);
+		return samp;
+	}
+
+	samp.coef = envGetRadiance(samp.Wi) / samp.pdf;
+	return samp;
 }

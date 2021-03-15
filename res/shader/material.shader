@@ -14,10 +14,9 @@ const uint Dielectric = 1;
 struct Material
 {
 	vec3 albedo;
-	float metallic;
+	float metIor;
 	float roughness;
 	int type;
-	float ior;
 };
 
 const int MAX_MATERIALS = 20;
@@ -196,14 +195,15 @@ BsdfSample metalWorkflowGetSample(vec3 N, vec3 Wo, vec3 albedo, float metallic, 
 bool refract(out vec3 Wt, vec3 Wi, vec3 N, float eta)
 {
 	float cosTi = dot(N, Wi);
+	if (cosTi < 0) eta = 1.0 / eta;
 	float sin2Ti = max(0.0, 1.0 - cosTi * cosTi);
 	float sin2Tt = sin2Ti / (eta * eta);
 
 	if (sin2Tt >= 1.0) return false;
 
-	float dirN = cosTi > 0.0 ? 1.0 : -1.0;
-	float cosTt = sqrt(1.0 - sin2Tt) * dirN;
-	Wt = normalize(-Wi / eta + N * dirN * (cosTi / eta - cosTt));
+	float cosTt = sqrt(1.0 - sin2Tt);
+	if (cosTi < 0) cosTt = -cosTt;
+	Wt = normalize(-Wi / eta + N * (cosTi / eta - cosTt));
 	return true;
 }
 
@@ -293,10 +293,8 @@ BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roug
 		}
 		else
 		{
-			float eta = (dot(N, Wo) > 0.0f) ? ior : 1.0 / ior;
-
 			vec3 Wi;
-			bool refr = refract(Wi, Wo, N, eta);
+			bool refr = refract(Wi, Wo, N, ior);
 			if (!refr) return INVALID_SAMPLE;
 
 			return bsdfSample(Wi, 1.0, tint, SpecTrans);
@@ -313,7 +311,7 @@ BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roug
 		if (rand() < refl)
 		{
 			vec3 Wi = -reflect(Wo, H);
-			//if (!sameHemisphere(N, Wo, Wi)) return INVALID_SAMPLE;
+			if (!sameHemisphere(N, Wo, Wi)) return INVALID_SAMPLE;
 
 			float p = ggxPdfWm(N, H, Wo, alpha) / (4.0f * absDot(H, Wo));
 			float HoWo = absDot(H, Wo);
@@ -328,10 +326,8 @@ BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roug
 		}
 		else
 		{
-			float eta = (dot(H, Wo) > 0.0) ? ior : 1.0 / ior;
-
 			vec3 Wi;
-			bool refr = refract(Wi, Wo, H, eta);
+			bool refr = refract(Wi, Wo, H, ior);
 			if (!refr) return INVALID_SAMPLE;
 			if (sameHemisphere(N, Wo, Wi)) return INVALID_SAMPLE;
 			if (absDot(N, Wi) < 1e-10) return INVALID_SAMPLE;
@@ -339,7 +335,8 @@ BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roug
 			float HoWo = absDot(H, Wo);
 			float HoWi = absDot(H, Wi);
 
-			float sqrtDenom = dot(H, Wo) + eta * dot(H, Wi);
+			if (dot(H, Wo) < 0) ior = 1.0 / ior;
+			float sqrtDenom = dot(H, Wo) + ior * dot(H, Wi);
 			float denom = sqrtDenom * sqrtDenom;
 			float dHdWi = HoWi / denom;
 
