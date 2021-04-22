@@ -111,3 +111,17 @@ bool sameHemisphere(vec3 N, vec3 A, vec3 B)
 {
 	return dot(N, A) * dot(N, B) > 0;
 }
+
+int maxExtent(vec3 v)
+{
+	if (v.x > v.y) return v.x > v.z ? 0 : 2;
+	return v.y > v.z ? 1 : 2;
+}
+
+int cubemapFace(vec3 dir)
+{
+	int maxDim = maxExtent(abs(dir));
+	if (maxDim == 0) return dir.x > 0 ? 0 : 1;
+	if (maxDim == 1) return dir.y > 0 ? 2 : 3;
+	if (maxDim == 2) return dir.z > 0 ? 4 : 5;
+}

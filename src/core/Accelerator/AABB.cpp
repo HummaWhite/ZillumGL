@@ -20,24 +20,26 @@ glm::vec3 AABB::centroid() const
 float AABB::surfaceArea() const
 {
 	glm::vec3 vol = pMax - pMin;
-	return vol.x * vol.y * vol.z;
+	return 2.0f * (vol.x * vol.y + vol.y * vol.z + vol.z * vol.x);
 }
 
 int AABB::maxExtent() const
 {
-	glm::vec3 vol = pMax - pMin;
+	glm::vec3 v = pMax - pMin;
+	if (v.x > v.y) return v.x > v.z ? 0 : 2;
+	return v.y > v.z ? 1 : 2;
+}
 
-	float maxVal = vol.x;
-	int maxComponent = 0;
-	for (int i = 1; i < 3; i++)
+std::string AABB::toString()
+{
+	auto vec3ToString = [](const glm::vec3 & v)
 	{
-		float component = *((float*)&vol + i);
-		if (component > maxVal)
-		{
-			maxVal = component;
-			maxComponent = i;
-		}
-	}
+		std::stringstream ss;
+		ss << "vec3{ x:" << v.x << ", y:" << v.y << ", z:" << v.z << " }";
+		return ss.str();
+	};
 
-	return maxComponent;
+	std::stringstream ss;
+	ss << "AABB{ pMin:" << vec3ToString(pMin) << ", pMax:" << vec3ToString(pMax) << " }";
+	return ss.str();
 }

@@ -77,4 +77,9 @@ private:
 	int lastCursorY = 0;
 	bool F1Pressed = false;
 	bool envImportanceSample = false;
+	bool aoMode = false;
+	glm::vec3 aoCoef = glm::vec3(1.0f);
+	int maxBounce = 3;
+	bool roulette = false;
+	float rouletteProb = 0.6f;
 };

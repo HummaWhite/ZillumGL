@@ -46,24 +46,12 @@ void RayTest::init()
 	envMap->load("res/texture/082.hdr");
 	camera.setFOV(90.0f);
 	camera.setPos({ 1.583f, -4.044f, 4.9f });
-	//camera.setPos({ 0.0f, -8.0f, 0.0f });
+	camera.lookAt({ 0.0f, 0.0f, 0.9f });
 	camera.setAspect((float)this->windowWidth() / this->windowHeight());
 
-	scene.addMaterial(Material{ glm::vec3(1.0f), 0.0f, 1.0f });
-	scene.addMaterial(Material{ glm::vec3(1.0f), 1.0f, 0.1f });
-	scene.addMaterial(Material{ glm::vec3(1.0f, 0.2f, 0.2f), 0.0f, 0.2f });
-	scene.addMaterial(Material{ glm::vec3(0.0f), 0.0f, 0.15f });
-	scene.addMaterial(Material{ glm::vec3(1.0f), 1.0f, 0.15f });
-
-	//auto car = std::make_shared<Model>("res/model/dragon2_full.obj", 1, glm::vec3(0.0f), glm::vec3(0.1f));
-
-	//scene.addObject(car);
-	//scene.addObject(std::make_shared<Model>("res/model/sphere80.obj", 1, glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f), glm::vec3(0.0f, 90.0f, 0.0f)));
-	scene.addObject(std::make_shared<Model>("res/model/teapot20.obj", 1, glm::vec3(-4.0f, 2.0f, 0.0f)));
-	scene.addObject(std::make_shared<Model>("res/model/square.obj", 0, glm::vec3(0.0f), glm::vec3(100.0f)));
-	scene.addObject(std::make_shared<Model>("res/model/suzanne.obj", 2, glm::vec3(4.0f, 2.0f, 1.5f), glm::vec3(1.5f)));
-	scene.addObject(std::make_shared<Model>("res/model/bunny.obj", 3, glm::vec3(-4.5f, -2.0f, 0.4f)));
-	scene.addObject(std::make_shared<Model>("res/model/cube.obj", 4, glm::vec3(0.0, 7.0f, 2.0f), glm::vec3(4.0f, 4.0f, 4.0f), glm::vec3(-45.0f)));
+	/*
+	 *
+	 */
 
 	sceneBuffers = scene.genBuffers();
 
@@ -76,13 +64,14 @@ void RayTest::init()
 	rayTestShader.setTexture("texCoords", *sceneBuffers.texCoord, 3);
 	rayTestShader.setTexture("indices", *sceneBuffers.index, 4);
 	rayTestShader.setTexture("bounds", *sceneBuffers.bound, 5);
-	rayTestShader.setTexture("sizeIndices", *sceneBuffers.sizeIndex, 6);
+	rayTestShader.setTexture("hitTable", *sceneBuffers.hitTable, 6);
 	rayTestShader.setTexture("matIndices", *sceneBuffers.matIndex, 7);
 	rayTestShader.setTexture("envMap", envMap->getEnvMap(), 8);
 	rayTestShader.setTexture("envAliasTable", envMap->getAliasTable(), 9);
 	rayTestShader.setTexture("envAliasProb", envMap->getAliasProb(), 10);
 	rayTestShader.set1f("envSum", envMap->sum());
 	rayTestShader.set1f("bvhDepth", glm::log2((float)boxCount));
+	rayTestShader.set1i("bvhSize", boxCount);
 	postShader.set1i("toneMapping", toneMapping);
 
 	materials = scene.materialSet();
@@ -207,9 +196,9 @@ void RayTest::reset()
 	for (int i = 0; i < materials.size(); i++)
 	{
 		rayTestShader.setVec3(("materials[" + std::to_string(i) + "].albedo").c_str(), materials[i].albedo);
-		rayTestShader.set1f(("materials[" + std::to_string(i) + "].metallic").c_str(), materials[i].metallic);
+		rayTestShader.set1f(("materials[" + std::to_string(i) + "].metIor").c_str(), materials[i].metIor);
 		rayTestShader.set1f(("materials[" + std::to_string(i) + "].roughness").c_str(), glm::mix(0.0132f, 1.0f, materials[i].roughness));
-		//rayTestShader.set1f(("materials[" + std::to_string(i) + "].anisotropic").c_str(), materials[i].anisotropic);
+		rayTestShader.set1i(("materials[" + std::to_string(i) + "].type").c_str(), materials[i].type);
 	}
 
 	rayTestShader.set1i("lightCount", lights.size());
@@ -225,6 +214,9 @@ void RayTest::reset()
 	}
 	rayTestShader.set1i("showBVH", showBVH);
 
+	rayTestShader.set1i("aoMode", aoMode);
+	if (aoMode) rayTestShader.setVec3("aoCoef", aoCoef);
+
 	rayTestShader.setVec3("camF", camera.front());
 	rayTestShader.setVec3("camR", camera.right());
 	rayTestShader.setVec3("camU", camera.up());
@@ -234,6 +226,11 @@ void RayTest::reset()
 
 	rayTestShader.set1f("envStrength", envStrength);
 	rayTestShader.set1i("envImportance", envImportanceSample);
+
+	rayTestShader.set1i("roulette", roulette);
+	rayTestShader.set1f("rouletteProb", rouletteProb);
+	rayTestShader.set1i("maxBounce", maxBounce);
+	rayTestShader.set1i("matIndex", materialIndex);
 }
 
 void RayTest::setupGUI()
@@ -255,19 +252,54 @@ void RayTest::renderGUI()
 	ImGui::Begin("RayTest");
 	{
 		ImGui::Text("BVH Nodes: %d\nTriangles: %d\nVertices: %d", boxCount, triangleCount, vertexCount);
-		if (ImGui::Checkbox("Show BVH", &showBVH)) reset();
+		if (ImGui::Checkbox("Show BVH", &showBVH) ||
+			ImGui::Checkbox("Ambient Occlusion", &aoMode)) reset();
+
+		if (aoMode)
+		{
+			if (ImGui::DragFloat3("AO Coef", glm::value_ptr(aoCoef), 0.01f, 0.0f)) reset();
+		}
+
+		if (ImGui::SliderInt("Max Bounces", &maxBounce, 0, 60)) reset();
+
+		if (ImGui::Checkbox("Roulette", &roulette)) reset();
+		if (roulette)
+		{
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(-100);
+			if (ImGui::SliderFloat("Prob", &rouletteProb, 0.0f, 1.0f)) reset();
+		}
 		
 		if (materials.size() > 0)
 		{
 			ImGui::SliderInt("Material", &materialIndex, 0, materials.size() - 1);
 			auto& m = materials[materialIndex];
-			if (
+			if (ImGui::SliderInt("Type", &m.type, 0, 1) ||
 				ImGui::ColorEdit3("Albedo", glm::value_ptr(m.albedo)) ||
-				ImGui::SliderFloat("Metallic", &m.metallic, 0.0f, 1.0f) ||
-				ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f) ||
-				ImGui::SliderFloat("Anisotropic", &m.anisotropic, 0.0f, 1.0f))
-			{
+				ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
+			{	
 				reset();
+			}
+
+			if (m.type == Material::MetalWorkflow) m.metIor = glm::min<float>(m.metIor, 1.0f);
+
+			if (ImGui::SliderFloat(
+				m.type == Material::MetalWorkflow ? "Metallic" : "Ior",
+				&m.metIor, 0.0f,
+				m.type == Material::MetalWorkflow ? 1.0f : 4.0f)) reset();
+		}
+
+		if (ImGui::Button("Dump Materials"))
+		{
+			auto printVec3 = [](const glm::vec3& v)
+			{
+				std::cout << v.x << " " << v.y << " " << v.z << "\n";
+			};
+
+			for (auto& i : materials)
+			{
+				printVec3(i.albedo);
+				std::cout << i.metIor << " " << i.roughness << "\n";
 			}
 		}
 

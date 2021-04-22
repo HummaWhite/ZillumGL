@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <algorithm>
 #include <iostream>
 #include <fstream>
@@ -24,13 +25,13 @@
 #include "Renderer.h"
 #include "Texture.h"
 #include "Camera.h"
-#include "Lighting.h"
 #include "Shape.h"
 #include "VerticalSync.h"
 #include "FrameBuffer.h"
 #include "CheckError.h"
 #include "Accelerator/BVH.h"
 #include "Scene.h"
+#include "EnvironmentMap.h"
 
 class EngineBase
 {

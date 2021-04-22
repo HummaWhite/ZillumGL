@@ -2,10 +2,10 @@
 
 glm::mat4 Model::constRot = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
-Model::Model(const char* filePath, uint8_t matIndex, glm::vec3 pos, float size, glm::vec3 rotation) :
-	materialIndex(matIndex),
+Model::Model(const char* filePath, const glm::vec3& pos, const glm::vec3& scale, const glm::vec3& rotation) :
 	m_Pos(pos),
-	m_Scale(size),
+	m_Scale(scale),
+	m_Rotation(rotation),
 	m_RotMatrix(glm::mat4(1.0f)),
 	m_LoadedFromFile(true)
 {
@@ -103,11 +103,11 @@ glm::mat4 Model::modelMatrix() const
 {
 	glm::mat4 model(1.0f);
 	model = glm::translate(model, m_Pos);
+	model = glm::scale(model, m_Scale);
+	if (m_LoadedFromFile) model = model * constRot;
 	model = glm::rotate(model, glm::radians(m_Rotation.x), glm::vec3(0.0f, 0.0f, 1.0f));
 	model = glm::rotate(model, glm::radians(m_Rotation.y), glm::vec3(1.0f, 0.0f, 0.0f));
 	model = glm::rotate(model, glm::radians(m_Rotation.z), glm::vec3(0.0f, 1.0f, 0.0f));
-	model = glm::scale(model, m_Scale);
-	if (m_LoadedFromFile) model = model * constRot;
 	return model;
 }
 
@@ -129,6 +129,7 @@ Mesh Model::processMesh(aiMesh* mesh)
 {
 	std::vector<glm::vec3> vertices(mesh->mNumVertices);
 	std::vector<glm::vec3> normals(mesh->mNumVertices);
+	std::vector<glm::vec2> texCoords(mesh->mNumVertices);
 	std::vector<uint32_t> indices;
 
 	for (int i = 0; i < mesh->mNumFaces; i++)
@@ -139,6 +140,17 @@ Mesh Model::processMesh(aiMesh* mesh)
 
 	memcpy(vertices.data(), mesh->mVertices, mesh->mNumVertices * sizeof(glm::vec3));
 	memcpy(normals.data(), mesh->mNormals, mesh->mNumVertices * sizeof(glm::vec3));
+	if (mesh->mTextureCoords[0] != nullptr)
+	{
+		for (int i = 0; i < mesh->mNumVertices; i++)
+		{
+			texCoords[i] = *(glm::vec2*)(&mesh->mTextureCoords[0][i]);
+		}
+	}
+	else
+	{
+		memset(texCoords.data(), 0, mesh->mNumVertices * sizeof(glm::vec2));
+	}
 
 	auto model = modelMatrix();
 	auto modelInv = glm::mat3(glm::transpose(glm::inverse(model)));
@@ -146,8 +158,8 @@ Mesh Model::processMesh(aiMesh* mesh)
 	Mesh m;
 	m.vertices.resize(vertices.size());
 	m.normals.resize(normals.size());
+	m.texCoords = texCoords;
 	m.indices = indices;
-	m.matIndex = materialIndex;
 
 	std::transform(vertices.begin(), vertices.end(), m.vertices.begin(),
 		[model](const glm::vec3& v)
@@ -158,7 +170,7 @@ Mesh Model::processMesh(aiMesh* mesh)
 	std::transform(normals.begin(), normals.end(), m.normals.begin(),
 		[modelInv](const glm::vec3& n)
 		{
-			return modelInv * n;
+			return glm::normalize(modelInv * n);
 		}
 	);
 

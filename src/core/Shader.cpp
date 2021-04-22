@@ -13,56 +13,29 @@ bool Shader::load(const char* filePath)
 	std::string fragmentCode;
 	std::string geometryCode;
 	std::fstream file;
-	bool includeGeomeryCode = 0;
+	
+	std::map<std::string, bool> inclRec;
+	inclRec[SHADER_DEFAULT_DIR + filePath] = true;
+	file.open(SHADER_DEFAULT_DIR + filePath);
+	if (!file.is_open()) return false;
 
-	std::cout << "[Shader]\tLoading [" << filePath << "] ... ";
+	std::cout << "[Shader]\tLoading [" << SHADER_DEFAULT_DIR + filePath << "] ...\n";
 
 	try
 	{
-		file.open(filePath);
-		if (!file.is_open())
-		{
-			std::cout << "[Error]\t\tShader file not found" << std::endl;
-			return false;
-		}
-		std::string fileString;
-		while (std::getline(file, fileString))
-		{
-			if (fileString == "//$Vertex") break;
-		}
-		while (std::getline(file, fileString))
-		{
-			if (fileString == "//$Fragment") break;
-			vertexCode += fileString + '\n';
-		}
-		if (vertexCode == "") throw "[Error]\t\tVertex shader not found";
-		while (std::getline(file, fileString))
-		{
-			if (fileString == "//$Geometry")
-			{
-				includeGeomeryCode = true;
-				break;
-			}
-			fragmentCode += fileString + '\n';
-		}
-		if (fragmentCode == "") throw "[Error]\t\tFragment shader not found";
-		while (std::getline(file, fileString))
-		{
-			geometryCode += fileString + '\n';
-		}
-		if (includeGeomeryCode && geometryCode == "") throw "[Error]\t\tGeometry shader not found";
-		file.close();
+		loadShader(file, vertexCode, fragmentCode, geometryCode, ShaderLoadStat::None, inclRec);
 	}
-	catch (const char* err)
+	catch (const char* e)
 	{
-		std::cout << err << std::endl;
-		exit(-1);
+		std::cout << "\n[Error] " << e << std::endl;
+		return false;
 	}
 
-	const char* geometry = (includeGeomeryCode && (geometryCode != "")) ? geometryCode.c_str() : nullptr;
+	//std::cout << fragmentCode << std::endl;
+
+	const char* geometry = (geometryCode != "") ? geometryCode.c_str() : nullptr;
 	compileShader(vertexCode.c_str(), fragmentCode.c_str(), geometry);
 
-	std::cout << "[Done]" << std::endl;
 	m_Name = std::string(filePath);
 	return true;
 }
@@ -112,11 +85,6 @@ void Shader::set4f(const char* name, float v0, float v1, float v2, float v3) con
 	glProgramUniform4f(m_ID, getUniformLocation(name), v0, v1, v2, v3);
 }
 
-void Shader::set1d(const char* name, double v) const
-{
-	glProgramUniform1d(m_ID, getUniformLocation(name), v);
-}
-
 void Shader::setVec3(const char* name, const glm::vec3& vec) const
 {
 	glProgramUniform3f(m_ID, getUniformLocation(name), vec.x, vec.y, vec.z);
@@ -135,11 +103,6 @@ void Shader::setMat3(const char* name, const glm::mat3& mat) const
 void Shader::setMat4(const char* name, const glm::mat4& mat) const
 {
 	glProgramUniformMatrix4fv(m_ID, getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(mat));
-}
-
-void Shader::setVec2d(const char* name, const glm::dvec2& vec) const
-{
-	glProgramUniform2dv(m_ID, getUniformLocation(name), 1, glm::value_ptr(vec));
 }
 
 void Shader::setTexture(const char* name, const Texture& tex)
@@ -190,6 +153,67 @@ void Shader::resetTextureMap()
 	m_TextureMap.clear();
 }
 
+void Shader::loadShader(std::fstream& file, std::string& vertexCode, std::string& fragCode, std::string& geomCode, ShaderLoadStat stat, std::map<std::string, bool>& inclRec)
+{
+	std::string line;
+	while (std::getline(file, line))
+	{
+		if (line[0] == '=')
+		{
+			std::string macro, arg;
+			std::stringstream ssline(line);
+			ssline >> macro;
+			if (macro == "=type")
+			{
+				ssline >> arg;
+				if (arg == "vertex")
+				{
+					if (stat == ShaderLoadStat::Vertex) throw "redefinition";
+					stat = ShaderLoadStat::Vertex;
+				}
+				else if (arg == "fragment")
+				{
+					if (stat == ShaderLoadStat::Fragment) throw "redefinition";
+					stat = ShaderLoadStat::Fragment;
+				}
+				else if (arg == "geometry")
+				{
+					if (stat == ShaderLoadStat::Geometry) throw "redefinition";
+				}
+				else if (arg != "lib") throw "included file is not a lib";
+				continue;
+			}
+			else if (macro == "=include")
+			{
+				ssline >> arg;
+				arg = SHADER_DEFAULT_DIR + arg;
+				if (inclRec.find(arg) != inclRec.end()) continue;
+
+				std::fstream file;
+				file.open(arg);
+				if (!file.is_open()) throw "included file not found";
+
+				loadShader(file, vertexCode, fragCode, geomCode, stat, inclRec);
+				inclRec[arg] = true;
+				continue;
+			}
+		}
+
+		switch (stat)
+		{
+		case ShaderLoadStat::Vertex:
+			vertexCode += line + '\n';
+			break;
+		case ShaderLoadStat::Fragment:
+			fragCode += line + '\n';
+			break;
+		case ShaderLoadStat::Geometry:
+			geomCode += line + '\n';
+			break;
+		}
+	}
+}
+
 void Shader::compileShader(const char* vertexSource, const char* fragmentSource, const char* geometrySource)
 {
 	GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -234,7 +258,7 @@ void Shader::checkShaderCompileInfo(uint32_t shaderId, const std::string& name)
 		const int length = 8192;
 		char info[length];
 		glGetShaderInfoLog(shaderId, length, nullptr, info);
-		std::cout << "[Shader] " << name << " compilation error\n" << info << "\n";
+		std::cout << "\n[Shader]\t\t" << name << " compilation error\n" << info << "\n";
 	}
 }
 
@@ -247,6 +271,6 @@ void Shader::checkShaderLinkInfo()
 		const int length = 8192;
 		char info[length];
 		glGetProgramInfoLog(m_ID, length, nullptr, info);
-		std::cout << "[Shader] " << "link error\n" << info << "\n";
+		std::cout << "\n[Shader]\t\tlink error\n" << info << "\n";
 	}
 }

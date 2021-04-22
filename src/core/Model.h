@@ -19,13 +19,12 @@ struct Mesh
 	std::vector<glm::vec3> normals;
 	std::vector<glm::vec2> texCoords;
 	std::vector<uint32_t> indices;
-	uint8_t matIndex;
 };
 
 class Model
 {
 public:
-	Model(const char* filePath, uint8_t matIndex, glm::vec3 pos = glm::vec3(0.0f), float size = 1.0f, glm::vec3 rotation = glm::vec3(0.0f));
+	Model(const char* filePath, const glm::vec3& pos = glm::vec3(0.0f), const glm::vec3& scale = glm::vec3(1.0f), const glm::vec3& rotation = glm::vec3(0.0f));
 	~Model();
 
 	bool loadModel(const char* filePath);
@@ -61,8 +60,6 @@ private:
 	glm::mat4 m_RotMatrix = glm::mat4(1.0f);
 	bool m_LoadedFromFile = false;
 	std::string m_Name;
-
-	uint8_t materialIndex;
 
 	static glm::mat4 constRot;
 };

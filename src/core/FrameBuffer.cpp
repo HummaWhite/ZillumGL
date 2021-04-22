@@ -40,15 +40,7 @@ void FrameBuffer::detachRenderBuffer(GLenum attachment)
 
 void FrameBuffer::attachTexture(GLenum attachment, Texture& texture, int mipmapLevel)
 {
-	switch (texture.type())
-	{
-	case GL_TEXTURE_2D:
-		glNamedFramebufferTexture2DEXT(m_ID, attachment, GL_TEXTURE_2D, texture.ID(), mipmapLevel);
-		break;
-	case GL_TEXTURE_CUBE_MAP:
-		glNamedFramebufferTexture(m_ID, attachment, texture.ID(), mipmapLevel);
-		break;
-	}
+	glNamedFramebufferTexture2DEXT(m_ID, attachment, GL_TEXTURE_2D, texture.ID(), mipmapLevel);
 	if (!checkComplete()) return;
 }
 

@@ -3,21 +3,18 @@
 PackedBVH BVH::build()
 {
 	std::cout << "[BVH]\t\tCPU Building ...  ";
-
 	primInfo.resize(indices.size() / 3);
-	bounds.resize(primInfo.size() * 2 - 1);
-	sizeIndices.resize(primInfo.size() * 2 - 1);
+	treeSize = primInfo.size() * 2 - 1;
+	bounds.resize(treeSize);
+	sizeIndices.resize(treeSize);
 
 	AABB bound;
 	for (int i = 0; i < primInfo.size(); i++)
 	{
 		PrimInfo hInfo;
-		hInfo.bound = AABB(
-			vertices[indices[i * 3 + 0]],
-			vertices[indices[i * 3 + 1]],
-			vertices[indices[i * 3 + 2]]);
+		hInfo.bound = AABB(vertices[indices[i * 3 + 0]], vertices[indices[i * 3 + 1]], vertices[indices[i * 3 + 2]]);
 		hInfo.centroid = hInfo.bound.centroid();
-		hInfo.index = i | ((uint32_t)matIndices[i] << 24);
+		hInfo.index = i;
 		bound = (i == 0) ? hInfo.bound : AABB(bound, hInfo.bound);
 		primInfo[i] = hInfo;
 	}
@@ -25,7 +22,8 @@ PackedBVH BVH::build()
 	build(0, bound, 0, primInfo.size() - 1);
 	std::cout << "[" << vertices.size() << " vertices, " << primInfo.size() << " triangles, " << bounds.size() << " nodes]\n";
 
-	return PackedBVH{ bounds, sizeIndices };
+	buildHitTable();
+	return PackedBVH{ bounds, hitTable };
 }
 
 void BVH::build(int offset, const AABB& nodeBound, int l, int r)
@@ -33,7 +31,7 @@ void BVH::build(int offset, const AABB& nodeBound, int l, int r)
 	int dim = nodeBound.maxExtent();
 	int size = (r - l) * 2 + 1;
 	bounds[offset] = nodeBound;
-	sizeIndices[offset] = (size == 1) ? (primInfo[l].index | 0x80000000) : size;
+	sizeIndices[offset] = (size == 1) ? (primInfo[l].index | BVH_LEAF_MASK) : size;
 
 	if (l == r) return;
 
@@ -110,4 +108,51 @@ void BVH::build(int offset, const AABB& nodeBound, int l, int r)
 
 	build(offset + 1, lBound, l, m);
 	build(offset + 2 * (m - l) + 2, rBound, m + 1, r);
+}
+
+void BVH::buildHitTable()
+{
+	bool (*cmpFuncs[6])(const glm::vec3 & a, const glm::vec3 & b) =
+	{
+		[](const glm::vec3& a, const glm::vec3& b) { return a.x > b.x; },	// X+
+		[](const glm::vec3& a, const glm::vec3& b) { return a.x < b.x; },	// X-
+		[](const glm::vec3& a, const glm::vec3& b) { return a.y > b.y; },	// Y+
+		[](const glm::vec3& a, const glm::vec3& b) { return a.y < b.y; },	// Y-
+		[](const glm::vec3& a, const glm::vec3& b) { return a.z > b.z; },	// Z+
+		[](const glm::vec3& a, const glm::vec3& b) { return a.z < b.z; }		// Z-
+	};
+
+	hitTable.resize(18 * treeSize);
+
+	int* st = new int[treeSize];
+
+	for (int i = 0; i < 6; i++)
+	{
+		int tableOffset = treeSize * 3 * i;
+		int top = 0, index = 0;
+		st[top++] = 0;
+		while (top)
+		{
+			int k = st[--top];
+
+			bool isLeaf = sizeIndices[k] & BVH_LEAF_MASK;
+			int nodeSize = isLeaf ? 1 : sizeIndices[k];
+
+			hitTable[tableOffset + index * 3 + 0] = k;			// nodeIndex
+			hitTable[tableOffset + index * 3 + 1] = isLeaf ? sizeIndices[k] ^ BVH_LEAF_MASK : -1; // primIndex
+			hitTable[tableOffset + index * 3 + 2] = index + nodeSize;	// missIndex
+			index++;
+			if (isLeaf) continue;
+
+			int lSize = sizeIndices[k + 1];
+			if (lSize & BVH_LEAF_MASK) lSize = 1;
+
+			int lch = k + 1, rch = k + 1 + lSize;
+
+			if (!cmpFuncs[i](bounds[lch].centroid(), bounds[rch].centroid())) std::swap(lch, rch);
+			st[top++] = rch;
+			st[top++] = lch;
+		}
+	}
+	delete[] st;
 }

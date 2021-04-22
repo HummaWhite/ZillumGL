@@ -11,7 +11,7 @@ struct SceneBuffer
 	std::shared_ptr<BufferTexture> texCoord;
 	std::shared_ptr<BufferTexture> index;
 	std::shared_ptr<BufferTexture> bound;
-	std::shared_ptr<BufferTexture> sizeIndex;
+	std::shared_ptr<BufferTexture> hitTable;
 	std::shared_ptr<BufferTexture> matIndex;
 };
 
@@ -19,17 +19,13 @@ struct Material
 {
 	enum { MetalWorkflow = 0, Dielectric };
 
-	Material(const glm::vec3& albedo, float metallic, float roughness) :
-		albedo(albedo), metallic(metallic), roughness(roughness), type(MetalWorkflow) {}
-
-	Material(const glm::vec3& albedo, float ior, float roughness, int nul) :
-		albedo(albedo), ior(ior), roughness(roughness), type(Dielectric) {}
+	Material(const glm::vec3& albedo, float metIor, float roughness, int type) :
+		albedo(albedo), metIor(metIor), roughness(roughness), type(type) {}
 
 	glm::vec3 albedo;
-	float metallic;
+	float metIor;
 	float roughness;
 	int type;
-	float ior;
 };
 
 struct Light
@@ -45,7 +41,7 @@ class Scene
 public:
 	SceneBuffer genBuffers();
 
-	void addObject(std::shared_ptr<Model> object);
+	void addObject(std::shared_ptr<Model> object, uint8_t matIndex);
 	void addMaterial(const Material& material);
 	void addLight(const Light& light);
 	void addLight(const glm::vec3& pa, const glm::vec3& pb, const glm::vec3& pc, const glm::vec3& radiosity);
@@ -56,7 +52,7 @@ public:
 	std::vector<Light> lightSet() const { return lights; }
 
 private:
-	std::vector<std::shared_ptr<Model>> objects;
+	std::vector<std::pair<std::shared_ptr<Model>, uint8_t>> objects;
 	std::vector<Material> materials;
 	std::vector<Light> lights;
 	BVHSplitMethod bvhBuildMethod = BVHSplitMethod::SAH;

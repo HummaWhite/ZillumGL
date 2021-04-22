@@ -2,10 +2,7 @@
 
 #include <vector>
 #include <memory>
-
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
+#include <stack>
 
 #include "AABB.h"
 #include "../Buffer.h"
@@ -13,10 +10,12 @@
 
 enum class BVHSplitMethod { SAH, Middle, EqualCounts };
 
+const int BVH_LEAF_MASK = 0x80000000;
+
 struct PackedBVH
 {
 	std::vector<AABB> bounds;
-	std::vector<int> sizeIndices;
+	std::vector<int> hitTable;
 };
 
 struct PrimInfo
@@ -29,21 +28,23 @@ struct PrimInfo
 class BVH
 {
 public:
-	BVH(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const std::vector<uint8_t>& matIndices, BVHSplitMethod splitMethod = BVHSplitMethod::SAH) :
-		vertices(vertices), indices(indices), matIndices(matIndices), method(splitMethod) {}
+	BVH(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, BVHSplitMethod splitMethod = BVHSplitMethod::SAH) :
+		vertices(vertices), indices(indices), method(splitMethod) {}
 
 	PackedBVH build();
 
 private:
 	void build(int offset, const AABB& nodeBound, int l, int r);
+	void buildHitTable();
 
 private:
 	std::vector<glm::vec3> vertices;
 	std::vector<uint32_t> indices;
 	std::vector<PrimInfo> primInfo;
-	const std::vector<uint8_t> matIndices;
 	std::vector<AABB> bounds;
 	std::vector<int> sizeIndices;
+	std::vector<int> hitTable;
 	BVHSplitMethod method;
+	int treeSize = 0;
 };
 

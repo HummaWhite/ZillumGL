@@ -19,7 +19,7 @@ struct Material
 	int type;
 };
 
-const int MAX_MATERIALS = 20;
+const int MAX_MATERIALS = 32;
 uniform Material materials[MAX_MATERIALS];
 
 struct BsdfSample
@@ -135,11 +135,10 @@ vec3 metalWorkflowBsdf(vec3 Wo, vec3 Wi, vec3 N, vec3 albedo, float metallic, fl
 	float alpha = roughness * roughness;
 	vec3 H = normalize(Wi + Wo);
 
-	if (dot(N, Wo) < 0) return vec3(0.0);
-	if (dot(N, Wi) < 0) return vec3(0.0);
+	if (!sameHemisphere(N, Wo, Wi)) return vec3(0.0);
 
-	float NdotL = satDot(N, Wi);
-	float NdotV = satDot(N, Wo);
+	float NdotL = dot(N, Wi);
+	float NdotV = dot(N, Wo);
 
 	vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
@@ -163,7 +162,7 @@ vec3 metalWorkflowBsdf(vec3 Wo, vec3 Wi, vec3 N, vec3 albedo, float metallic, fl
 float metalWorkflowPdf(vec3 Wo, vec3 Wi, vec3 N, float metallic, float alpha)
 {
 	vec3 H = normalize(Wo + Wi);
-	float pdfDiff = dot(N, Wi) * PiInv;
+	float pdfDiff = satDot(N, Wi) * PiInv;
 	float pdfSpec = ggxPdfVisibleWm(N, H, Wo, alpha) / (4.0 * absDot(H, Wo));
 	return mix(pdfDiff, pdfSpec, 1.0f / (2.0f - metallic));
 }

@@ -30,7 +30,7 @@ float envGetPortion(vec3 Wi)
 float envPdfLi(vec3 Wi)
 {
 	vec2 size = vec2(textureSize(envMap, 0).xy);
-	return envGetPortion(Wi) * size.x * size.y * 0.5f * square(PiInv);
+	return envGetPortion(Wi) * size.x * size.y * 0.5f * square(PiInv);// / sqrt(1.0 - square(Wi.z));
 }
 
 vec4 envImportanceSample()
@@ -68,8 +68,8 @@ EnvSample envImportanceSample(vec3 x)
 	Ray ray;
 	ray.ori = x + samp.Wi * 1e-4;
 	ray.dir = samp.Wi;
-	float dist = 1e6;
-	if (bvhHit(ray, dist, true) == 0)
+	float dist = 1e8;
+	if (bvhTest(ray, dist))
 	{
 		samp.coef = vec3(0.0);
 		return samp;

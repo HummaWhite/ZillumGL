@@ -35,11 +35,13 @@ uniform sampler2D lastFrame;
 uniform int spp;
 uniform int freeCounter;
 uniform bool showBVH;
-uniform int boxIndex;
+uniform int matIndex;
 uniform float bvhDepth;
 uniform bool roulette;
 uniform float rouletteProb;
 uniform int maxBounce;
+uniform bool aoMode;
+uniform vec3 aoCoef;
 
 vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 {
@@ -51,6 +53,8 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 		vec3 P = ray.ori;
 		vec3 Wo = -ray.dir;
 		vec3 N = surfaceInfo.norm;
+
+		if (dot(N, Wo) < 0) N = -N;
 
 		int matId = texelFetch(matIndices, id).r;
 		vec3 albedo = materials[matId].albedo;
@@ -133,6 +137,37 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 	return result;
 }
 
+vec3 traceAO(Ray ray, int id, SurfaceInfo surfaceInfo)
+{
+	vec3 ao = vec3(0.0);
+	vec3 P = ray.ori;
+	vec3 N = surfaceInfo.norm;
+	if (dot(N, ray.dir) > 0) N = -N;
+
+	for (int i = 0; i < maxBounce; i++)
+	{
+		vec3 Wi = sampleUniformHemisphere(N);
+
+		Ray occRay;
+		occRay.ori = P + Wi * 1e-4;
+		occRay.dir = Wi;
+
+		/*
+		SceneHitInfo scHitInfo = sceneHit(occRay);
+		if (scHitInfo.shapeId == -1) continue;
+
+		float dist = scHitInfo.dist;
+		if (dist < aoCoef.x) ao.x += 1.0;
+		if (dist < aoCoef.y) ao.y += 1.0;
+		if (dist < aoCoef.z) ao.z += 1.0;
+		*/
+		float tmp = aoCoef.x;
+		if (bvhTest(occRay, tmp)) ao += 1.0;
+	}
+	
+	return 1.0 - ao / float(maxBounce);
+}
+
 void main()
 {
 	vec2 texSize = textureSize(lastFrame, 0).xy;
@@ -158,7 +193,9 @@ void main()
 	SceneHitInfo scHitInfo = sceneHit(ray);
 	if (showBVH)
 	{
-		result = vec3(maxDepth / bvhDepth * 0.2);
+		int matId = texelFetch(matIndices, scHitInfo.shapeId).r;
+		if (matId == matIndex) result = vec3(1.0, 1.0, 0.2);
+		else result = vec3(maxDepth / bvhDepth * 0.2);
 	}
 	else if (scHitInfo.shapeId == -1)
 	{
@@ -168,7 +205,9 @@ void main()
 	{
 		ray.ori = rayPoint(ray, scHitInfo.dist);
 		SurfaceInfo sInfo = triangleSurfaceInfo(scHitInfo.shapeId, ray.ori);
-		result = trace(ray, scHitInfo.shapeId, sInfo);
+		result = aoMode ?
+			traceAO(ray, scHitInfo.shapeId, sInfo) :
+			trace(ray, scHitInfo.shapeId, sInfo);
 	}
 	else
 	{

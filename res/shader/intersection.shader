@@ -6,8 +6,9 @@ uniform samplerBuffer normals;
 uniform samplerBuffer texCoords;
 uniform isamplerBuffer indices;
 uniform samplerBuffer bounds;
-uniform isamplerBuffer sizeIndices;
 uniform isamplerBuffer matIndices;
+uniform isamplerBuffer hitTable;
+uniform int bvhSize;
 
 struct Ray
 {
@@ -239,48 +240,69 @@ bool boxHit(int id, Ray ray, out float tMin)
 	return false;
 }
 
-const int STACK_SIZE = 64;
-int stack[STACK_SIZE];
 float maxDepth = 0.0;
 
-int bvhHit(Ray ray, inout float dist, bool quickCheck)
+bool bvhTest(Ray ray, float dist)
 {
-	if (!quickCheck) dist = 1e8;
-	int closestHit = -1;
+	int tableOffset = cubemapFace(-ray.dir) * bvhSize;
+	int k = 0;
 
-	int top = 0;
-	stack[top++] = 0;
-
-	while (top > 0)
+	while (k != bvhSize)
 	{
-		int k = stack[--top];
+		int nodeIndex = texelFetch(hitTable, tableOffset + k).r;
+		int primIndex = texelFetch(hitTable, tableOffset + k).g;
+
 		float boxDist;
-
-		if (!boxHit(k, ray, boxDist)) continue;
-		if (boxDist > dist) continue;
-
-		int sizeIndex = texelFetch(sizeIndices, k).r;
-		if (sizeIndex < 0)
+		bool bHit = boxHit(nodeIndex, ray, boxDist);
+		if (!bHit || (bHit && boxDist > dist))
 		{
-			sizeIndex ^= 0x80000000;
-			HitInfo hInfo = intersectTriangle(sizeIndex, ray);
-			if (hInfo.hit && hInfo.dist < dist)
-			{
-				if (quickCheck) return 0;
-				dist = hInfo.dist;
-				closestHit = sizeIndex;
-			}
-			maxDepth += 1.0;
+			k = texelFetch(hitTable, tableOffset + k).b;
 			continue;
 		}
-		int lSize = texelFetch(sizeIndices, k + 1).r;
-		if (lSize < 0) lSize = 1;
-		stack[top++] = k + 1 + lSize;
-		stack[top++] = k + 1;
+
+		if (primIndex >= 0)
+		{
+			HitInfo hInfo = intersectTriangle(primIndex, ray);
+			if (hInfo.hit && hInfo.dist < dist) return true;
+		}
+		k++;
+	}
+	return false;
+}
+
+int bvhHit(Ray ray, out float dist)
+{
+	dist = 1e8;
+	int closest = -1;
+	int tableOffset = cubemapFace(-ray.dir) * bvhSize;
+
+	int k = 0;
+	while (k != bvhSize)
+	{
+		int nodeIndex = texelFetch(hitTable, tableOffset + k).r;
+		int primIndex = texelFetch(hitTable, tableOffset + k).g;
+
+		float boxDist;
+		bool bHit = boxHit(nodeIndex, ray, boxDist);
+		if (!bHit || (bHit && boxDist > dist))
+		{
+			k = texelFetch(hitTable, tableOffset + k).b;
+			continue;
+		}
+
+		if (primIndex >= 0)
+		{
+			HitInfo hInfo = intersectTriangle(primIndex, ray);
+			if (hInfo.hit && hInfo.dist < dist)
+			{
+				dist = hInfo.dist;
+				closest = primIndex;
+			}
+		}
+		k++;
 		maxDepth += 1.0;
 	}
-
-	return closestHit;
+	return closest;
 }
 
 struct Light
@@ -330,7 +352,7 @@ struct SceneHitInfo
 SceneHitInfo sceneHit(Ray ray)
 {
 	SceneHitInfo ret;
-	ret.shapeId = bvhHit(ray, ret.dist, false);
+	ret.shapeId = bvhHit(ray, ret.dist);
 
 	for (int i = 0; i < lightCount; i++)
 	{
@@ -341,6 +363,5 @@ SceneHitInfo sceneHit(Ray ray)
 			ret.dist = h.dist;
 		}
 	}
-
 	return ret;
 }

@@ -1,5 +1,8 @@
 #pragma once
 
+#include <iostream>
+#include <sstream>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -22,6 +25,8 @@ public:
 	glm::vec3 centroid() const;
 	float surfaceArea() const;
 	int maxExtent() const;
+
+	std::string toString();
 
 public:
 	glm::vec3 pMin;

@@ -9,9 +9,15 @@
 #include <vector>
 #include <map>
 
-#include "Lighting.h"
 #include "Texture.h"
 #include "Buffer.h"
+
+const std::string SHADER_DEFAULT_DIR = "res/shader/";
+
+enum class ShaderLoadStat
+{
+	None, Vertex, Fragment, Geometry
+};
 
 class Shader
 {
@@ -31,14 +37,12 @@ public:
 	void set2f(const char* name, float v0, float v1) const;
 	void set3f(const char* name, float v0, float v1, float v2) const;
 	void set4f(const char* name, float v0, float v1, float v2, float v3) const;
-	void set1d(const char* name, double v) const;
 
 	void setVec2(const char* name, const glm::vec2& vec) const;
 	void setVec3(const char* name, const glm::vec3& vec) const;
 	void setVec4(const char* name, const glm::vec4& vec) const;
 	void setMat3(const char* name, const glm::mat3& mat) const;
 	void setMat4(const char* name, const glm::mat4& mat) const;
-	void setVec2d(const char* name, const glm::dvec2& vec) const;
 
 	void setTexture(const char* name, const Texture& tex);
 	void setTexture(const char* name, const Texture& tex, uint32_t slot);
@@ -53,6 +57,7 @@ public:
 	void resetTextureMap();
 
 private:
+	void loadShader(std::fstream& file, std::string& vertexCode, std::string& fragCode, std::string& geomCode, ShaderLoadStat stat, std::map<std::string, bool>& inclRec);
 	void compileShader(const char* vertexSource, const char* fragmentSource, const char* geometrySource);
 	void checkShaderCompileInfo(uint32_t shaderId, const std::string& name);
 	void checkShaderLinkInfo();
