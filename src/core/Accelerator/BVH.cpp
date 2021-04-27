@@ -1,5 +1,51 @@
 #include "BVH.h"
 
+void radixSort16(PrimInfo* a, int count, int dim)
+{
+	auto getDim = [=](const PrimInfo& p)
+	{
+		return *(int*)(&p.centroid.x + dim);
+	};
+
+	PrimInfo* b = new PrimInfo[count];
+	int mIndex[4][256];
+	memset(mIndex, 0, sizeof(mIndex));
+
+	for (int i = 0; i < count; i++)
+	{
+		int u = getDim(a[i]);
+		mIndex[0][uint8_t(u)]++; u >>= 8;
+		mIndex[1][uint8_t(u)]++; u >>= 8;
+		mIndex[2][uint8_t(u)]++; u >>= 8;
+		mIndex[3][uint8_t(u)]++; u >>= 8;
+	}
+
+	int m[4] = { 0, 0, 0, 0 };
+	for (int i = 0; i < 256; i++)
+	{
+		int n[4] = { mIndex[0][i], mIndex[1][i], mIndex[2][i], mIndex[3][i] };
+		mIndex[0][i] = m[0];
+		mIndex[1][i] = m[1];
+		mIndex[2][i] = m[2];
+		mIndex[3][i] = m[3];
+		m[0] += n[0];
+		m[1] += n[1];
+		m[2] += n[2];
+		m[3] += n[3];
+	}
+
+	for (int j = 0; j < 4; j++)
+	{             // radix sort
+		for (int i = 0; i < count; i++)
+		{     //  sort by current lsb
+			int u = getDim(a[i]);
+			b[mIndex[j][uint8_t(u >> (j << 3))]++] = a[i];
+		}
+		std::swap(a, b);                //  swap ptrs
+	}
+	delete[] b;
+}
+
 PackedBVH BVH::build()
 {
 	std::cout << "[BVH]\t\tCPU Building ...  ";
@@ -42,8 +88,9 @@ void BVH::build(int offset, const AABB& nodeBound, int l, int r)
 		return getDim(a.centroid, dim) < getDim(b.centroid, dim);
 	};
 
-	std::sort(primInfo.begin() + l, primInfo.begin() + r, cmp);
+	//std::sort(primInfo.begin() + l, primInfo.begin() + r, cmp);
 	int hittableCount = r - l + 1;
+	radixSort16(primInfo.data() + l, hittableCount, dim);
 
 	if (hittableCount == 2)
 	{
