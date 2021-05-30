@@ -50,6 +50,7 @@ class BufferTexture:
 {
 public:
 	void allocate(int size, const void* data, GLenum format);
+	void write(int offset, int size, const void* data);
 
 	int size() const { return buf.size(); }
 

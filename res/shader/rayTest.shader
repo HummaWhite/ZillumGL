@@ -23,6 +23,7 @@ vec3 BUGVAL;
 =include material.shader
 =include intersection.shader
 =include envMap.shader
+=include light.shader
 
 uniform vec3 camF;
 uniform vec3 camR;
@@ -54,32 +55,39 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 		vec3 Wo = -ray.dir;
 		vec3 N = surfaceInfo.norm;
 
-		if (dot(N, Wo) < 0) N = -N;
+		//if (dot(N, Wo) < 0) N = -N;
 
 		int matId = texelFetch(matIndices, id).r;
-		vec3 albedo = materials[matId].albedo;
-		int type = materials[matId].type;
-		float metIor = materials[matId].metIor;
-		float roughness = materials[matId].roughness;
+		vec3 albedo = texelFetch(materials, matId * 2).rgb;
+		vec2 tmp = texelFetch(materials, matId * 2 + 1).rg;
+		float metIor = tmp.r;
+		float roughness = mix(0.0132, 1.0, tmp.g);
+		int type = texelFetch(matTypes, matId * 2 + 1).b;
 
-		if (envImportance)
+		if (sampleLight)
 		{
 			if (type == Dielectric)
 			{
 				if (!approximateDelta(roughness))
 				{
-					EnvSample envSamp = envImportanceSample(P);
-					float bsdfPdf = dielectricPdf(Wo, envSamp.Wi, N, metIor, roughness);
-					float weight = heuristic(envSamp.pdf, 1, bsdfPdf, 1);
-					result += dielectricBsdf(Wo, envSamp.Wi, N, albedo, metIor, roughness) * beta * satDot(N, envSamp.Wi) * envSamp.coef * weight;
+					LightSample samp = sampleLightAndEnv(P);
+					if (samp.pdf > 0.0)
+					{
+						float bsdfPdf = dielectricPdf(Wo, samp.Wi, N, metIor, roughness);
+						float weight = heuristic(samp.pdf, 1, bsdfPdf, 1);
+						result += dielectricBsdf(Wo, samp.Wi, N, albedo, metIor, roughness) * beta * satDot(N, samp.Wi) * samp.coef * weight;
+					}
 				}
 			}
 			else
 			{
-				EnvSample envSamp = envImportanceSample(P);
-				float bsdfPdf = metalWorkflowPdf(Wo, envSamp.Wi, N, metIor, roughness * roughness);
-				float weight = heuristic(envSamp.pdf, 1, bsdfPdf, 1);
-				result += metalWorkflowBsdf(Wo, envSamp.Wi, N, albedo, metIor, roughness) * beta * satDot(N, envSamp.Wi) * envSamp.coef * weight;
+				LightSample samp = sampleLightAndEnv(P);
+				if (samp.pdf > 0.0)
+				{
+					float bsdfPdf = metalWorkflowPdf(Wo, samp.Wi, N, metIor, roughness * roughness);
+					float weight = heuristic(samp.pdf, 1, bsdfPdf, 1);
+					result += metalWorkflowBsdf(Wo, samp.Wi, N, albedo, metIor, roughness) * beta * satDot(N, samp.Wi) * samp.coef * weight;
+				}
 			}
 		}
 
@@ -92,46 +100,58 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 		vec3 bsdf = samp.bsdf;
 		uint flag = samp.flag;
 
+		bool deltaBsdf = (flag == SpecRefl || flag == SpecTrans);
+
 		if (bsdfPdf < 1e-8) break;
-		beta *= bsdf / bsdfPdf * ((flag == SpecRefl || flag == SpecTrans) ? 1.0 : absDot(N, Wi));
+		beta *= bsdf / bsdfPdf * (deltaBsdf ? 1.0 : absDot(N, Wi));
 
 		Ray newRay;
 		newRay.ori = P + Wi * 1e-4;
 		newRay.dir = Wi;
 
 		SceneHitInfo scHitInfo = sceneHit(newRay);
-		if (scHitInfo.shapeId == -1)
+		int primId = scHitInfo.primId;
+		float dist = scHitInfo.dist;
+		vec3 hitPoint = rayPoint(newRay, dist);
+
+		if (primId == -1 || primId >= objPrimCount)
 		{
+			int lightId = primId - objPrimCount;
 			float weight = 1.0;
-			if (envImportance)
+			if (sampleLight)
 			{
-				if (type != Dielectric || !approximateDelta(roughness))
+				if (!deltaBsdf)
 				{
-					float envPdf = envPdfLi(Wi);
-					weight = heuristic(bsdfPdf, 1, envPdf, 1);
+					if (primId == -1)
+					{
+						float envPdf = envPdfLi(Wi) * pdfSelectEnv();
+						if (envPdf <= 0.0) weight = 0.0;
+						weight = heuristic(bsdfPdf, 1, envPdf, 1);
+					}
+					else
+					{
+						float lightPdf = lightPdfLi(lightId, P, hitPoint) * pdfSelectLight(lightId);
+						if (lightPdf <= 0.0) weight = 0.0;
+						else weight = heuristic(bsdfPdf, 1, lightPdf, 1);
+					}
 				}
 			}
-			result += envGetRadiance(Wi) * beta * weight;
-			break;
-		}
-		
-		if (scHitInfo.shapeId < -1)
-		{
-			//result += lightGetRadiance(-scHitInfo.shapeId - 2, -Wi, scHitInfo.dist) * beta;
-			//result += lights[-scHitInfo.shapeId - 2].radiosity * beta * 0.5 * PiInv;
+			//weight = 0.0;
+			vec3 radiance = (primId == -1) ? envGetRadiance(Wi) : lightGetRadiance(lightId, hitPoint, -Wi);
+			result += radiance * beta * weight;
 			break;
 		}
 
+		float rr = rouletteProb * max(beta.x, max(beta.y, beta.z));
 		if (roulette)
 		{
-			if (rand() > rouletteProb) break;
-			beta /= rouletteProb;
+			if (rand() > rr) break;
+			if (rr < 1.0) beta /= rr;
 		}
 
-		vec3 nextP = rayPoint(newRay, scHitInfo.dist);
-		surfaceInfo = triangleSurfaceInfo(scHitInfo.shapeId, nextP);
-		id = scHitInfo.shapeId;
-		newRay.ori = nextP;
+		surfaceInfo = triangleSurfaceInfo(primId, hitPoint);
+		id = primId;
+		newRay.ori = hitPoint;
 		ray = newRay;
 	}
 	return result;
@@ -152,15 +172,6 @@ vec3 traceAO(Ray ray, int id, SurfaceInfo surfaceInfo)
 		occRay.ori = P + Wi * 1e-4;
 		occRay.dir = Wi;
 
-		/*
-		SceneHitInfo scHitInfo = sceneHit(occRay);
-		if (scHitInfo.shapeId == -1) continue;
-
-		float dist = scHitInfo.dist;
-		if (dist < aoCoef.x) ao.x += 1.0;
-		if (dist < aoCoef.y) ao.y += 1.0;
-		if (dist < aoCoef.z) ao.z += 1.0;
-		*/
 		float tmp = aoCoef.x;
 		if (bvhTest(occRay, tmp)) ao += 1.0;
 	}
@@ -191,27 +202,29 @@ void main()
 	ray.dir = rayDir;
 
 	SceneHitInfo scHitInfo = sceneHit(ray);
+	int primId = scHitInfo.primId;
+	float dist = scHitInfo.dist;
+	vec3 hitPoint = rayPoint(ray, dist);
+
 	if (showBVH)
 	{
-		int matId = texelFetch(matIndices, scHitInfo.shapeId).r;
+		int matId = texelFetch(matIndices, scHitInfo.primId).r;
 		if (matId == matIndex) result = vec3(1.0, 1.0, 0.2);
 		else result = vec3(maxDepth / bvhDepth * 0.2);
 	}
-	else if (scHitInfo.shapeId == -1)
+	else if (scHitInfo.primId == -1)
 	{
 		result = envGetRadiance(rayDir);
 	}
-	else if (scHitInfo.shapeId >= 0)
+	else if (scHitInfo.primId < objPrimCount)
 	{
-		ray.ori = rayPoint(ray, scHitInfo.dist);
-		SurfaceInfo sInfo = triangleSurfaceInfo(scHitInfo.shapeId, ray.ori);
-		result = aoMode ?
-			traceAO(ray, scHitInfo.shapeId, sInfo) :
-			trace(ray, scHitInfo.shapeId, sInfo);
+		ray.ori = hitPoint;
+		SurfaceInfo sInfo = triangleSurfaceInfo(primId, ray.ori);
+		result = aoMode ? traceAO(ray, primId, sInfo) : trace(ray, primId, sInfo);
 	}
 	else
 	{
-		result = lights[-scHitInfo.shapeId - 2].radiosity;
+		result = lightGetRadiance(primId - objPrimCount, hitPoint, -rayDir);
 	}
 
 	vec3 lastRes = texture(lastFrame, scrCoord).rgb;

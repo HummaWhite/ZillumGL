@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Accelerator/BVH.h"
+#include "EnvironmentMap.h"
 #include "Texture.h"
 #include "Model.h"
 
@@ -13,27 +14,10 @@ struct SceneBuffer
 	std::shared_ptr<BufferTexture> bound;
 	std::shared_ptr<BufferTexture> hitTable;
 	std::shared_ptr<BufferTexture> matIndex;
-};
-
-struct Material
-{
-	enum { MetalWorkflow = 0, Dielectric };
-
-	Material(const glm::vec3& albedo, float metIor, float roughness, int type) :
-		albedo(albedo), metIor(metIor), roughness(roughness), type(type) {}
-
-	glm::vec3 albedo;
-	float metIor;
-	float roughness;
-	int type;
-};
-
-struct Light
-{
-	glm::vec3 pa;
-	glm::vec3 pb;
-	glm::vec3 pc;
-	glm::vec3 radiosity;
+	std::shared_ptr<BufferTexture> material;
+	std::shared_ptr<BufferTexture> lightPower;
+	std::shared_ptr<BufferTexture> lightAlias;
+	std::shared_ptr<BufferTexture> lightProb;
 };
 
 class Scene
@@ -43,17 +27,24 @@ public:
 
 	void addObject(std::shared_ptr<Model> object, uint8_t matIndex);
 	void addMaterial(const Material& material);
-	void addLight(const Light& light);
-	void addLight(const glm::vec3& pa, const glm::vec3& pb, const glm::vec3& pc, const glm::vec3& radiosity);
-
-	void setBVHBuildMethod(BVHSplitMethod method);
-
-	std::vector<Material> materialSet() const { return materials; }
-	std::vector<Light> lightSet() const { return lights; }
+	void addLight(std::shared_ptr<Model> light, const glm::vec3& radiance);
 
 private:
+	std::tuple<std::vector<glm::vec3>, std::vector<int32_t>, std::vector<float>> genLightTable();
+
+public:
 	std::vector<std::pair<std::shared_ptr<Model>, uint8_t>> objects;
+	std::vector<std::pair<std::shared_ptr<Model>, glm::vec3>> lights;
 	std::vector<Material> materials;
-	std::vector<Light> lights;
+
+	std::shared_ptr<EnvironmentMap> envMap;
+	bool sampleLight = false;
+	bool lightEnvUniformSample = false;
+	float envStrength = 1.0f;
+	float lightSum = 0.0f;
+	int nLights;
+
+	int objPrimCount = 0;
+
 	BVHSplitMethod bvhBuildMethod = BVHSplitMethod::SAH;
 };

@@ -42,6 +42,17 @@ bool Model::loadModel(const char* filePath)
 		return false;
 	}
 
+	if (scene->mNumMaterials > 0)
+	{
+		for (int i = 0; i < scene->mNumMaterials; i++)
+		{
+			aiMaterial* mat = scene->mMaterials[i];
+			aiColor3D albedo;
+			mat->Get(AI_MATKEY_COLOR_DIFFUSE, albedo);
+			m_Materials.push_back(Material(*(glm::vec3*) & albedo));
+		}
+	}
+
 	processNode(scene->mRootNode, scene);
 
 	std::cout << "  [" << m_Meshes.size() << " mesh(es)]" << std::endl;
@@ -160,6 +171,7 @@ Mesh Model::processMesh(aiMesh* mesh)
 	m.normals.resize(normals.size());
 	m.texCoords = texCoords;
 	m.indices = indices;
+	m.matIndex = mesh->mMaterialIndex;
 
 	std::transform(vertices.begin(), vertices.end(), m.vertices.begin(),
 		[model](const glm::vec3& v)

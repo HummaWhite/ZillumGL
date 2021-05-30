@@ -11,16 +11,8 @@ const uint Invalid = 1 << 16;
 const uint MetalWorkflow = 0;
 const uint Dielectric = 1;
 
-struct Material
-{
-	vec3 albedo;
-	float metIor;
-	float roughness;
-	int type;
-};
-
-const int MAX_MATERIALS = 32;
-uniform Material materials[MAX_MATERIALS];
+uniform samplerBuffer materials;
+uniform isamplerBuffer matTypes;
 
 struct BsdfSample
 {

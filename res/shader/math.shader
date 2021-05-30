@@ -60,6 +60,11 @@ float absDot(vec3 a, vec3 b)
 	return abs(dot(a, b));
 }
 
+float distSquare(vec3 x, vec3 y)
+{
+	return dot(x - y, x - y);
+}
+
 vec2 sphereToPlane(vec3 uv)
 {
 	float theta = atan(uv.y, uv.x);
@@ -124,4 +129,49 @@ int cubemapFace(vec3 dir)
 	if (maxDim == 0) return dir.x > 0 ? 0 : 1;
 	if (maxDim == 1) return dir.y > 0 ? 2 : 3;
 	if (maxDim == 2) return dir.z > 0 ? 4 : 5;
+}
+
+float angleBetween(vec3 x, vec3 y)
+{
+	if (dot(x, y) < 0.0) return Pi - 2.0 * asin(length(x + y) * 0.5);
+	else return 2.0 * asin(length(y - x) * 0.5);
+}
+
+vec3 triangleRandomPoint(vec3 va, vec3 vb, vec3 vc)
+{
+	float u = rand(), v = rand();
+	return va + u * (vc - va) + v * (vb - va);
+}
+
+float triangleArea(vec3 va, vec3 vb, vec3 vc)
+{
+	return 0.5f * length(cross(vc - va, vb - va));
+}
+
+float triangleSphericalArea(vec3 a, vec3 b, vec3 c)
+{
+	vec3 ab = cross(a, b);
+	vec3 bc = cross(b, c);
+	vec3 ca = cross(c, a);
+
+	if (dot(ab, ab) == 0.0 || dot(bc, bc) == 0.0 || dot(ca, ca) == 0.0) return 0.0;
+	ab = normalize(ab);
+	bc = normalize(bc);
+	ca = normalize(ca);
+
+	float alpha = angleBetween(ab, -ca);
+	float beta = angleBetween(bc, -ab);
+	float gamma = angleBetween(ca, -bc);
+
+	return abs(alpha + beta + gamma - Pi);
+}
+
+float triangleSolidAngle(vec3 a, vec3 b, vec3 c)
+{
+	return triangleSphericalArea(a, b, c);
+}
+
+float triangleSolidAngle(vec3 va, vec3 vb, vec3 vc, vec3 p)
+{
+	return triangleSolidAngle(normalize(va - p), normalize(vb - p), normalize(vc - p));
 }

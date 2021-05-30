@@ -1,4 +1,4 @@
-//$Vertex
+=type vertex
 #version 450 core
 layout(location = 0) in vec2 aTexCoord;
 out vec2 texCoord;
@@ -10,13 +10,13 @@ void main()
 	gl_Position = vec4(transTex, 0.0, 1.0);
 }
 
-//$Fragment
+=type fragment
 #version 450 core
 in vec2 texCoord;
 out vec4 FragColor;
 
 uniform sampler2D frameBuffer;
-uniform float gamma;
+uniform int toneMapping;
 
 vec3 reinhard(vec3 color)
 {
@@ -53,8 +53,20 @@ void main()
 	// 如果不Clamp掉负值会出现奇怪的问题
 	color = clamp(color, 0.0, 1e8);
 
-	vec3 mapped = filmic(color);
+	vec3 mapped = color;
+	switch (toneMapping)
+	{
+	case 1:
+		mapped = reinhard(color);
+		break;
+	case 2:
+		mapped = filmic(color);
+		break;
+	case 3:
+		mapped = ACES(color);
+		break;
+	}
 
-	mapped = pow(mapped, vec3(1.0 / gamma));
+	mapped = pow(mapped, vec3(1.0 / 2.2));
 	FragColor = vec4(mapped, 1.0);
 }

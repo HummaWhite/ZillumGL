@@ -9,6 +9,7 @@ uniform samplerBuffer bounds;
 uniform isamplerBuffer matIndices;
 uniform isamplerBuffer hitTable;
 uniform int bvhSize;
+uniform int objPrimCount;
 
 struct Ray
 {
@@ -98,6 +99,32 @@ HitInfo intersectTriangle(int id, Ray ray)
 	vec3 b = texelFetch(vertices, ib).xyz;
 	vec3 c = texelFetch(vertices, ic).xyz;
 	return intersectTriangle(a, b, c, ray);
+}
+
+vec3 triangleRandomPoint(int id)
+{
+	int ia = texelFetch(indices, id * 3 + 0).r;
+	int ib = texelFetch(indices, id * 3 + 1).r;
+	int ic = texelFetch(indices, id * 3 + 2).r;
+
+	vec3 a = texelFetch(vertices, ia).xyz;
+	vec3 b = texelFetch(vertices, ib).xyz;
+	vec3 c = texelFetch(vertices, ic).xyz;
+
+	return triangleRandomPoint(a, b, c);
+}
+
+float triangleArea(int id)
+{
+	int ia = texelFetch(indices, id * 3 + 0).r;
+	int ib = texelFetch(indices, id * 3 + 1).r;
+	int ic = texelFetch(indices, id * 3 + 2).r;
+
+	vec3 a = texelFetch(vertices, ia).xyz;
+	vec3 b = texelFetch(vertices, ib).xyz;
+	vec3 c = texelFetch(vertices, ic).xyz;
+
+	return triangleArea(a, b, c);
 }
 
 SurfaceInfo triangleSurfaceInfo(int id, vec3 p)
@@ -305,63 +332,15 @@ int bvhHit(Ray ray, out float dist)
 	return closest;
 }
 
-struct Light
-{
-	vec3 va;
-	vec3 vb;
-	vec3 vc;
-	vec3 norm;
-	vec3 radiosity;
-};
-
-const int MAX_LIGHTS = 8;
-uniform Light lights[MAX_LIGHTS];
-uniform int lightCount;
-
-vec3 lightRandPoint(int id)
-{
-	return lights[id].va + (lights[id].vb - lights[id].va) * rand() + (lights[id].vc - lights[id].va) * rand();
-}
-
-vec3 lightGetRadiance(int id, vec3 dir, float dist)
-{
-	return lights[id].radiosity * satDot(lights[id].norm, dir) / (dist * dist);
-}
-
-HitInfo lightHit(int id, Ray ray)
-{
-	HitInfo ret;
-
-	vec3 vd = lights[id].vc + lights[id].vb - lights[id].va;
-	HitInfo l = intersectTriangle(lights[id].va, lights[id].vb, lights[id].vc, ray);
-	HitInfo r = intersectTriangle(lights[id].vc, lights[id].vb, vd, ray);
-
-	if (l.hit) return l;
-	if (r.hit) return r;
-
-	ret.hit = false;
-	return ret;
-}
-
 struct SceneHitInfo
 {
-	int shapeId;
+	int primId;
 	float dist;
 };
 
 SceneHitInfo sceneHit(Ray ray)
 {
 	SceneHitInfo ret;
-	ret.shapeId = bvhHit(ray, ret.dist);
-
-	for (int i = 0; i < lightCount; i++)
-	{
-		HitInfo h = lightHit(i, ray);
-		if (h.hit && h.dist < ret.dist)
-		{
-			ret.shapeId = -i - 2;
-			ret.dist = h.dist;
-		}
-	}
+	ret.primId = bvhHit(ray, ret.dist);
 	return ret;
 }

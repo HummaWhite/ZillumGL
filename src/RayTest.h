@@ -38,9 +38,6 @@ private:
 	int curFrame = 0;
 	int freeCounter = 0;
 
-	std::shared_ptr<EnvironmentMap> envMap;
-	float envStrength = 1.0f;
-
 	const int MAX_SPP;
 	int curSpp = 0;
 	bool limitSpp;
@@ -50,11 +47,7 @@ private:
 	Scene scene;
 	SceneBuffer sceneBuffers;
 	
-	std::vector<Material> materials;
 	int materialIndex = 0;
-
-	std::vector<Light> lights;
-	int lightIndex = 0;
 
 	Texture albedoMap;
 	Texture matallicMap;
@@ -76,7 +69,6 @@ private:
 	int lastCursorX = 0;
 	int lastCursorY = 0;
 	bool F1Pressed = false;
-	bool envImportanceSample = false;
 	bool aoMode = false;
 	glm::vec3 aoCoef = glm::vec3(1.0f);
 	int maxBounce = 3;

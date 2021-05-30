@@ -13,12 +13,31 @@
 
 #include "Texture.h"
 
+struct Material
+{
+	enum { MetalWorkflow = 0, Dielectric };
+
+	Material() : Material(glm::vec3(1.0f)) {}
+
+	Material(const glm::vec3& albedo) :
+		albedo(albedo), metIor(0.0f), roughness(1.0f), type(MetalWorkflow) {}
+
+	Material(const glm::vec3& albedo, float metIor, float roughness, int type) :
+		albedo(albedo), metIor(metIor), roughness(roughness), type(type) {}
+
+	glm::vec3 albedo;
+	float metIor;
+	float roughness;
+	int type;
+};
+
 struct Mesh
 {
 	std::vector<glm::vec3> vertices;
 	std::vector<glm::vec3> normals;
 	std::vector<glm::vec2> texCoords;
 	std::vector<uint32_t> indices;
+	uint32_t matIndex;
 };
 
 class Model
@@ -30,6 +49,7 @@ public:
 	bool loadModel(const char* filePath);
 
 	std::vector<Mesh> meshes() const { return m_Meshes; }
+	std::vector<Material> materials() const { return m_Materials; }
 
 	void setPos(glm::vec3 pos);
 	void setPos(float x, float y, float z);
@@ -54,6 +74,7 @@ private:
 
 private:
 	std::vector<Mesh> m_Meshes;
+	std::vector<Material> m_Materials;
 	glm::vec3 m_Pos = glm::vec3(0.0f);
 	glm::vec3 m_Scale = glm::vec3(1.0f);
 	glm::vec3 m_Rotation = glm::vec3(0.0f);

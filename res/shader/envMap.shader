@@ -6,11 +6,11 @@ uniform sampler2D envMap;
 uniform isampler2D envAliasTable;
 uniform sampler2D envAliasProb;
 uniform float envSum;
-uniform bool envImportance;
+uniform bool sampleLight;
 
 const vec3 BRIGHTNESS = vec3(0.299, 0.587, 0.114);
 
-struct EnvSample
+struct LightSample
 {
 	vec3 Wi;
 	vec3 coef;
@@ -29,6 +29,7 @@ float envGetPortion(vec3 Wi)
 
 float envPdfLi(vec3 Wi)
 {
+	if (envSum == 0.0) return 0.0;
 	vec2 size = vec2(textureSize(envMap, 0).xy);
 	return envGetPortion(Wi) * size.x * size.y * 0.5f * square(PiInv);// / sqrt(1.0 - square(Wi.z));
 }
@@ -58,9 +59,9 @@ vec4 envImportanceSample()
 	return vec4(Wi, pdf);
 }
 
-EnvSample envImportanceSample(vec3 x)
+LightSample envImportanceSample(vec3 x)
 {
-	EnvSample samp;
+	LightSample samp;
 	vec4 sp = envImportanceSample();
 	samp.Wi = sp.xyz;
 	samp.pdf = sp.w;
@@ -75,6 +76,9 @@ EnvSample envImportanceSample(vec3 x)
 		return samp;
 	}
 
-	samp.coef = envGetRadiance(samp.Wi) / samp.pdf;
+	if (samp.pdf != 0.0)
+	{
+		samp.coef = envGetRadiance(samp.Wi) / samp.pdf;
+	}
 	return samp;
 }

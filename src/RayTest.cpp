@@ -13,7 +13,7 @@ RayTest::RayTest(int maxSpp, bool limitSpp):
 	for (const auto& it : list)
 	{
 		std::string str = it.path().generic_u8string();
-		if (str.find(".hdr") != str.npos)
+		if (str.find(".hdr") != str.npos || str.find(".png") != str.npos)
 		{
 			envList.push_back(str);
 			envStr += str + '\0';
@@ -42,16 +42,12 @@ void RayTest::init()
 		frame[i].activateAttachmentTargets({ GL_COLOR_ATTACHMENT0 });
 	}
 
-	envMap = std::make_shared<EnvironmentMap>();
-	envMap->load("res/texture/082.hdr");
+	scene.envMap = std::make_shared<EnvironmentMap>();
+	scene.envMap->load("res/texture/none.png");
 	camera.setFOV(90.0f);
 	camera.setPos({ 1.583f, -4.044f, 4.9f });
 	camera.lookAt({ 0.0f, 0.0f, 0.9f });
 	camera.setAspect((float)this->windowWidth() / this->windowHeight());
-
-	/*
-	 *
-	 */
 
 	sceneBuffers = scene.genBuffers();
 
@@ -66,16 +62,21 @@ void RayTest::init()
 	rayTestShader.setTexture("bounds", *sceneBuffers.bound, 5);
 	rayTestShader.setTexture("hitTable", *sceneBuffers.hitTable, 6);
 	rayTestShader.setTexture("matIndices", *sceneBuffers.matIndex, 7);
-	rayTestShader.setTexture("envMap", envMap->getEnvMap(), 8);
-	rayTestShader.setTexture("envAliasTable", envMap->getAliasTable(), 9);
-	rayTestShader.setTexture("envAliasProb", envMap->getAliasProb(), 10);
-	rayTestShader.set1f("envSum", envMap->sum());
+	rayTestShader.setTexture("envMap", scene.envMap->getEnvMap(), 8);
+	rayTestShader.setTexture("envAliasTable", scene.envMap->getAliasTable(), 9);
+	rayTestShader.setTexture("envAliasProb", scene.envMap->getAliasProb(), 10);
+	rayTestShader.setTexture("materials", *sceneBuffers.material, 11);
+	rayTestShader.setTexture("matTypes", *sceneBuffers.material, 11);
+	rayTestShader.setTexture("lightPower", *sceneBuffers.lightPower, 12);
+	rayTestShader.setTexture("lightAlias", *sceneBuffers.lightAlias, 13);
+	rayTestShader.setTexture("lightProb", *sceneBuffers.lightProb, 14);
+	rayTestShader.set1i("nLights", scene.nLights);
+	rayTestShader.set1f("lightSum", scene.lightSum);
+	rayTestShader.set1f("envSum", scene.envMap->sum());
+	rayTestShader.set1i("objPrimCount", scene.objPrimCount);
 	rayTestShader.set1f("bvhDepth", glm::log2((float)boxCount));
 	rayTestShader.set1i("bvhSize", boxCount);
 	postShader.set1i("toneMapping", toneMapping);
-
-	materials = scene.materialSet();
-	lights = scene.lightSet();
 
 	this->setupGUI();
 	this->reset();
@@ -193,25 +194,7 @@ void RayTest::renderFrame()
 void RayTest::reset()
 {
 	curSpp = 0;
-	for (int i = 0; i < materials.size(); i++)
-	{
-		rayTestShader.setVec3(("materials[" + std::to_string(i) + "].albedo").c_str(), materials[i].albedo);
-		rayTestShader.set1f(("materials[" + std::to_string(i) + "].metIor").c_str(), materials[i].metIor);
-		rayTestShader.set1f(("materials[" + std::to_string(i) + "].roughness").c_str(), glm::mix(0.0132f, 1.0f, materials[i].roughness));
-		rayTestShader.set1i(("materials[" + std::to_string(i) + "].type").c_str(), materials[i].type);
-	}
-
-	rayTestShader.set1i("lightCount", lights.size());
-
-	for (int i = 0; i < lights.size(); i++)
-	{
-		rayTestShader.setVec3(("lights[" + std::to_string(i) + "].va").c_str(), lights[i].pa);
-		rayTestShader.setVec3(("lights[" + std::to_string(i) + "].vb").c_str(), lights[i].pb);
-		rayTestShader.setVec3(("lights[" + std::to_string(i) + "].vc").c_str(), lights[i].pc);
-		auto norm = glm::normalize(glm::cross(lights[i].pb - lights[i].pa, lights[i].pc - lights[i].pa));
-		rayTestShader.setVec3(("lights[" + std::to_string(i) + "].norm").c_str(), norm);
-		rayTestShader.setVec3(("lights[" + std::to_string(i) + "].radiosity").c_str(), lights[i].radiosity);
-	}
+	sceneBuffers.material->write(0, scene.materials.size() * sizeof(Material), scene.materials.data());
 	rayTestShader.set1i("showBVH", showBVH);
 
 	rayTestShader.set1i("aoMode", aoMode);
@@ -224,13 +207,19 @@ void RayTest::reset()
 	rayTestShader.set1f("tanFOV", glm::tan(glm::radians(camera.FOV() * 0.5f)));
 	rayTestShader.set1f("camAsp", (float)this->windowWidth() / (float)this->windowHeight());
 
-	rayTestShader.set1f("envStrength", envStrength);
-	rayTestShader.set1i("envImportance", envImportanceSample);
+	rayTestShader.set1f("envStrength", scene.envStrength);
+	rayTestShader.set1i("sampleLight", scene.sampleLight);
+	rayTestShader.set1i("lightEnvUniformSample", scene.lightEnvUniformSample);
 
 	rayTestShader.set1i("roulette", roulette);
 	rayTestShader.set1f("rouletteProb", rouletteProb);
 	rayTestShader.set1i("maxBounce", maxBounce);
 	rayTestShader.set1i("matIndex", materialIndex);
+
+	frame[curFrame].bind();
+	renderer.clear();
+	frame[curFrame ^ 1].bind();
+	renderer.clear();
 }
 
 void RayTest::setupGUI()
@@ -270,10 +259,10 @@ void RayTest::renderGUI()
 			if (ImGui::SliderFloat("Prob", &rouletteProb, 0.0f, 1.0f)) reset();
 		}
 		
-		if (materials.size() > 0)
+		if (scene.materials.size() > 0)
 		{
-			ImGui::SliderInt("Material", &materialIndex, 0, materials.size() - 1);
-			auto& m = materials[materialIndex];
+			ImGui::SliderInt("Material", &materialIndex, 0, scene.materials.size() - 1);
+			auto& m = scene.materials[materialIndex];
 			if (ImGui::SliderInt("Type", &m.type, 0, 1) ||
 				ImGui::ColorEdit3("Albedo", glm::value_ptr(m.albedo)) ||
 				ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
@@ -289,51 +278,25 @@ void RayTest::renderGUI()
 				m.type == Material::MetalWorkflow ? 1.0f : 4.0f)) reset();
 		}
 
-		if (ImGui::Button("Dump Materials"))
-		{
-			auto printVec3 = [](const glm::vec3& v)
-			{
-				std::cout << v.x << " " << v.y << " " << v.z << "\n";
-			};
-
-			for (auto& i : materials)
-			{
-				printVec3(i.albedo);
-				std::cout << i.metIor << " " << i.roughness << "\n";
-			}
-		}
-
-		if (lights.size() > 0)
-		{
-			ImGui::SliderInt("Light", &lightIndex, 0, lights.size() - 1);
-			auto& lt = lights[lightIndex];
-			if (ImGui::DragFloat3("Radiosity", (float*)&lt.radiosity, 0.1f, 0.0f) ||
-				ImGui::DragFloat3("Va", (float*)&lt.pa, 0.1f) ||
-				ImGui::DragFloat3("Vb", (float*)&lt.pb, 0.1f) ||
-				ImGui::DragFloat3("Vc", (float*)&lt.pc, 0.1f))
-			{
-				reset();
-			}
-		}
-
 		int tmp;
 		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.2f);
 		if (ImGui::Combo("EnvMap", &tmp, envStr.c_str(), envList.size()))
 		{
-			envMap = std::make_shared<EnvironmentMap>();
-			envMap->load(envList[tmp]);
-			rayTestShader.setTexture("envMap", envMap->getEnvMap(), 8);
-			rayTestShader.setTexture("envAliasTable", envMap->getAliasTable(), 9);
-			rayTestShader.setTexture("envAliasProb", envMap->getAliasProb(), 10);
-			rayTestShader.set1f("envSum", envMap->sum());
+			scene.envMap = std::make_shared<EnvironmentMap>();
+			scene.envMap->load(envList[tmp]);
+			rayTestShader.setTexture("envMap", scene.envMap->getEnvMap(), 8);
+			rayTestShader.setTexture("envAliasTable", scene.envMap->getAliasTable(), 9);
+			rayTestShader.setTexture("envAliasProb", scene.envMap->getAliasProb(), 10);
+			rayTestShader.set1f("envSum", scene.envMap->sum());
 			reset();
 		}
 
-		if (ImGui::Checkbox("Env Importance", &envImportanceSample)) reset();
+		if (ImGui::Checkbox("Sample Direct Light", &scene.sampleLight) ||
+			ImGui::Checkbox("LightEnvUniform", &scene.lightEnvUniformSample)) reset();
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(-100);
-		if (ImGui::DragFloat("Strength", &envStrength, 0.01f, 0.0f)) reset();
+		if (ImGui::DragFloat("Strength", &scene.envStrength, 0.01f, 0.0f)) reset();
 		ImGui::PopItemWidth();
 
 		const char* tones[] = { "None", "Reinhard", "Filmic", "ACES" };

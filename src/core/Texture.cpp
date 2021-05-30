@@ -105,3 +105,8 @@ void BufferTexture::allocate(int size, const void* data, GLenum format)
 	buf.allocate(size, data, 0);
 	generateTexBuffer(buf, format);
 }
+
+void BufferTexture::write(int offset, int size, const void* data)
+{
+	buf.write(offset, size, data);
+}
