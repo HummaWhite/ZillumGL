@@ -17,6 +17,17 @@ struct LightSample
 	float pdf;
 };
 
+LightSample lightSample(vec3 Wi, vec3 coef, float pdf)
+{
+	LightSample ret;
+	ret.Wi = Wi;
+	ret.coef = coef;
+	ret.pdf = pdf;
+	return ret;
+}
+
+const LightSample INVALID_LIGHT_SAMPLE = lightSample(vec3(0.0), vec3(0.0), 0.0);
+
 vec3 envGetRadiance(vec3 Wi)
 {
 	return texture(envMap, sphereToPlane(Wi)).rgb * envStrength;
@@ -61,24 +72,18 @@ vec4 envImportanceSample()
 
 LightSample envImportanceSample(vec3 x)
 {
-	LightSample samp;
 	vec4 sp = envImportanceSample();
-	samp.Wi = sp.xyz;
-	samp.pdf = sp.w;
+	vec3 Wi = sp.xyz;
+	float pdf = sp.w;
 
 	Ray ray;
-	ray.ori = x + samp.Wi * 1e-4;
-	ray.dir = samp.Wi;
+	ray.ori = x + Wi * 1e-4;
+	ray.dir = Wi;
 	float dist = 1e8;
-	if (bvhTest(ray, dist))
+	if (bvhTest(ray, dist) || pdf == 0.0)
 	{
-		samp.coef = vec3(0.0);
-		return samp;
+		return INVALID_LIGHT_SAMPLE;
 	}
 
-	if (samp.pdf != 0.0)
-	{
-		samp.coef = envGetRadiance(samp.Wi) / samp.pdf;
-	}
-	return samp;
+	return lightSample(Wi, envGetRadiance(Wi) / pdf, pdf);
 }

@@ -12,7 +12,7 @@ vec3 lightGetRadiance(int id, vec3 x, vec3 Wo)
 {
 	int triId = id + objPrimCount;
 	SurfaceInfo sInfo = triangleSurfaceInfo(triId, x);
-	if (dot(Wo, sInfo.norm) < 0) return vec3(0.0);
+	if (dot(Wo, sInfo.norm) <= 0.0) return vec3(0.0);
 
 	return texelFetch(lightPower, id).rgb / triangleArea(triId) * 0.5f * PiInv;
 }
@@ -48,42 +48,25 @@ LightSample lightSampleOne(vec3 x)
 
 	vec3 y = triangleRandomPoint(a, b, c);
 	vec3 Wi = normalize(y - x);
-	float dist = distance(x, y);
-
 	vec3 N = triangleSurfaceInfo(triId, y).norm;
-	if (dot(N, Wi) > 0)
-	{
-		ret.pdf = 0.0;
-		return ret;
-	}
+	float cosTheta = dot(N, -Wi);
+	if (cosTheta < 1e-6) return INVALID_LIGHT_SAMPLE;
 
 	Ray lightRay;
 	lightRay.ori = x + Wi * 1e-4;
 	lightRay.dir = Wi;
 
-	vec3 weight = vec3(0.0);
-
-	float cosTheta = satDot(N, -Wi);
-	if (cosTheta < 1e-6)
-	{
-		ret.pdf = 0.0;
-		return ret;
-	}
-
+	float dist = distance(x, y);
 	float pdf = dist * dist / (triangleArea(a, b, c) * cosTheta);
 
 	float testDist = dist - 1e-4 - 1e-6;
-	if (!bvhTest(lightRay, testDist))
-	{
-		weight = lightGetRadiance(id, y, -Wi) / pdf;
-	}
+	if (bvhTest(lightRay, testDist) || pdf < 1e-8) return INVALID_LIGHT_SAMPLE;
+
+	vec3 weight = lightGetRadiance(id, y, -Wi);
 
 	float pdfSample = dot(texelFetch(lightPower, id).rgb, BRIGHTNESS) / lightSum;
-
-	ret.Wi = Wi;
-	ret.coef = weight / pdfSample;
-	ret.pdf = pdf * pdfSample;
-	return ret;
+	pdf *= pdfSample;
+	return lightSample(Wi, weight / pdf, pdf);
 }
 
 LightSample sampleLightAndEnv(vec3 x)

@@ -139,7 +139,7 @@ float angleBetween(vec3 x, vec3 y)
 
 vec3 triangleRandomPoint(vec3 va, vec3 vb, vec3 vc)
 {
-	float u = rand(), v = rand();
+	float u = rand(), v = rand(0.0, 1 - u);
 	return va + u * (vc - va) + v * (vb - va);
 }
 
