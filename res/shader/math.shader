@@ -108,8 +108,12 @@ vec3 sampleUniformHemisphere(vec3 N)
 
 vec4 sampleCosineWeighted(vec3 N)
 {
-	vec3 vec = sampleUniformHemisphere(N);
-	return vec4(vec, satDot(vec, N) * PiInv);
+	vec2 uv = toConcentricDisk(randBox());
+	float z = sqrt(1.0 - dot(uv, uv));
+	vec3 v = vec3(uv, z);
+	v = normalToWorld(N, v);
+
+	return vec4(v, PiInv * z);
 }
 
 bool sameHemisphere(vec3 N, vec3 A, vec3 B)
