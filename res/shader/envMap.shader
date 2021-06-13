@@ -65,7 +65,8 @@ vec4 envImportanceSample()
 	float sinTheta = sin(Pi * (float(row) + 0.5) / float(h));
 	vec2 uv = vec2(float(col) + 0.5, float(row + 0.5)) / vec2(float(w), float(h));
 	vec3 Wi = planeToSphere(uv);
-	float pdf = envPdfLi(Wi);
+	//float pdf = envPdfLi(Wi);
+	float pdf = envGetPortion(Wi) * size.x* size.y * 0.5f * square(PiInv);
 
 	return vec4(Wi, pdf);
 }
@@ -84,6 +85,5 @@ LightSample envImportanceSample(vec3 x)
 	{
 		return INVALID_LIGHT_SAMPLE;
 	}
-
 	return lightSample(Wi, envGetRadiance(Wi) / pdf, pdf);
 }

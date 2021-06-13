@@ -30,6 +30,8 @@ uniform vec3 camR;
 uniform vec3 camU;
 uniform vec3 camPos;
 uniform float tanFOV;
+uniform float lensRadius;
+uniform float focalDist;
 uniform float camAsp;
 uniform float camNear;
 uniform sampler2D lastFrame;
@@ -43,6 +45,8 @@ uniform float rouletteProb;
 uniform int maxBounce;
 uniform bool aoMode;
 uniform vec3 aoCoef;
+uniform vec2 baseCoord;
+uniform vec2 tileScale;
 
 vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 {
@@ -74,7 +78,7 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 					if (samp.pdf > 0.0)
 					{
 						float bsdfPdf = dielectricPdf(Wo, samp.Wi, N, metIor, roughness);
-						float weight = heuristic(samp.pdf, 1, bsdfPdf, 1);
+						float weight = biHeuristic(samp.pdf, bsdfPdf);
 						result += dielectricBsdf(Wo, samp.Wi, N, albedo, metIor, roughness) * beta * satDot(N, samp.Wi) * samp.coef * weight;
 					}
 				}
@@ -85,7 +89,7 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 				if (samp.pdf > 0.0)
 				{
 					float bsdfPdf = metalWorkflowPdf(Wo, samp.Wi, N, metIor, roughness * roughness);
-					float weight = heuristic(samp.pdf, 1, bsdfPdf, 1);
+					float weight = biHeuristic(samp.pdf, bsdfPdf);
 					result += metalWorkflowBsdf(Wo, samp.Wi, N, albedo, metIor, roughness) * beta * satDot(N, samp.Wi) * samp.coef * weight;
 				}
 			}
@@ -103,6 +107,7 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 		bool deltaBsdf = (flag == SpecRefl || flag == SpecTrans);
 
 		if (bsdfPdf < 1e-8) break;
+		vec3 lastBeta = beta;
 		beta *= bsdf / bsdfPdf * (deltaBsdf ? 1.0 : absDot(N, Wi));
 
 		Ray newRay;
@@ -117,7 +122,9 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 		if (primId == -1 || primId >= objPrimCount)
 		{
 			int lightId = primId - objPrimCount;
+			vec3 radiance = (primId == -1) ? envGetRadiance(Wi) : lightGetRadiance(lightId, hitPoint, -Wi);
 			float weight = 1.0;
+
 			if (sampleLight)
 			{
 				if (!deltaBsdf)
@@ -126,19 +133,21 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo)
 					{
 						float envPdf = envPdfLi(Wi) * pdfSelectEnv();
 						if (envPdf <= 0.0) weight = 0.0;
-						weight = heuristic(bsdfPdf, 1, envPdf, 1);
+						else weight = biHeuristic(bsdfPdf, envPdf);
 					}
 					else
 					{
 						float lightPdf = lightPdfLi(lightId, P, hitPoint) * pdfSelectLight(lightId);
 						if (lightPdf <= 0.0) weight = 0.0;
-						else weight = heuristic(bsdfPdf, 1, lightPdf, 1);
+						else weight = biHeuristic(bsdfPdf, lightPdf);
 					}
 				}
+				result += radiance * beta * weight;
 			}
-			//weight = 0.0;
-			vec3 radiance = (primId == -1) ? envGetRadiance(Wi) : lightGetRadiance(lightId, hitPoint, -Wi);
-			result += radiance * beta * weight;
+			else
+			{
+				result += radiance * beta;
+			}
 			break;
 		}
 
@@ -166,7 +175,7 @@ vec3 traceAO(Ray ray, int id, SurfaceInfo surfaceInfo)
 
 	for (int i = 0; i < maxBounce; i++)
 	{
-		vec3 Wi = sampleUniformHemisphere(N);
+		vec3 Wi = sampleCosineWeighted(N).xyz;
 
 		Ray occRay;
 		occRay.ori = P + Wi * 1e-4;
@@ -179,6 +188,24 @@ vec3 traceAO(Ray ray, int id, SurfaceInfo surfaceInfo)
 	return 1.0 - ao / float(maxBounce);
 }
 
+Ray sampleLensCamera()
+{
+	vec2 texelSize = 1.0 / textureSize(lastFrame, 0).xy;
+	vec2 biasedCoord = scrCoord + texelSize * randBox();
+	vec2 ndc = biasedCoord * 2.0 - 1.0;
+
+	vec3 pLens = vec3(toConcentricDisk(randBox()) * lensRadius, 0.0);
+	vec3 pFocusPlane = vec3(ndc * vec2(camAsp, 1.0) * focalDist * tanFOV, focalDist);
+	vec3 dir = pFocusPlane - pLens;
+	dir = normalize(camR * dir.x + camU * dir.y + camF * dir.z);
+
+	Ray ret;
+	ret.ori = camPos + camR * pLens.x + camU * pLens.y;
+	ret.dir = dir;
+
+	return ret;
+}
+
 void main()
 {
 	vec2 texSize = textureSize(lastFrame, 0).xy;
@@ -189,17 +216,8 @@ void main()
 	randSeed = (uint(texCoord.x) * freeCounter) + uint(texCoord.y);
 
 	vec3 result = vec3(0.0);
-	vec2 texelSize = 1.0 / textureSize(lastFrame, 0).xy;
 
-	vec2 samp = randBox();
-
-	vec2 biasedCoord = scrCoord + texelSize * samp;
-	vec2 ndc = biasedCoord * 2.0 - 1.0;
-	vec3 rayDir = normalize((camF + (camU * ndc.y + camR * camAsp * ndc.x) * tanFOV));
-
-	Ray ray;
-	ray.ori = camPos;
-	ray.dir = rayDir;
+	Ray ray = sampleLensCamera();
 
 	SceneHitInfo scHitInfo = sceneHit(ray);
 	int primId = scHitInfo.primId;
@@ -208,23 +226,26 @@ void main()
 
 	if (showBVH)
 	{
-		int matId = texelFetch(matIndices, scHitInfo.primId).r;
-		if (matId == matIndex) result = vec3(1.0, 1.0, 0.2);
+		int matId = texelFetch(matIndices, primId).r;
+		if (matId == matIndex && primId != -1) result = vec3(1.0, 1.0, 0.2);
 		else result = vec3(maxDepth / bvhDepth * 0.2);
-	}
-	else if (scHitInfo.primId == -1)
-	{
-		result = envGetRadiance(rayDir);
-	}
-	else if (scHitInfo.primId < objPrimCount)
-	{
-		ray.ori = hitPoint;
-		SurfaceInfo sInfo = triangleSurfaceInfo(primId, ray.ori);
-		result = aoMode ? traceAO(ray, primId, sInfo) : trace(ray, primId, sInfo);
 	}
 	else
 	{
-		result = lightGetRadiance(primId - objPrimCount, hitPoint, -rayDir);
+		if (scHitInfo.primId == -1)
+		{
+			result = envGetRadiance(ray.dir);
+		}
+		else if (scHitInfo.primId < objPrimCount)
+		{
+			ray.ori = hitPoint;
+			SurfaceInfo sInfo = triangleSurfaceInfo(primId, ray.ori);
+			result = aoMode ? traceAO(ray, primId, sInfo) : trace(ray, primId, sInfo);
+		}
+		else
+		{
+			result = lightGetRadiance(primId - objPrimCount, hitPoint, -ray.dir);
+		}
 	}
 
 	vec3 lastRes = texture(lastFrame, scrCoord).rgb;

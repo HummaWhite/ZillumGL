@@ -74,4 +74,9 @@ private:
 	int maxBounce = 3;
 	bool roulette = false;
 	float rouletteProb = 0.6f;
+
+	int tileSize = 2048;
+
+	float focalDist = 1.0f;
+	float lensRadius = 0.0f;
 };

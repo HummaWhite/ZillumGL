@@ -162,11 +162,11 @@ float metalWorkflowPdf(vec3 Wo, vec3 Wi, vec3 N, float metallic, float alpha)
 BsdfSample metalWorkflowGetSample(vec3 N, vec3 Wo, vec3 albedo, float metallic, float roughness)
 {
 	float spec = 1.0 / (2.0 - metallic);
-	bool sampleDiffuse = rand() > spec;
+	uint type = rand() > spec ? Diffuse : GlosRefl;
 	float alpha = square(roughness);
 
 	vec3 Wi;
-	if (sampleDiffuse) Wi = sampleCosineWeighted(N).xyz;
+	if (type == Diffuse) Wi = sampleCosineWeighted(N).xyz;
 	else
 	{
 		vec3 H = ggxSampleVisibleWm(randBox(), N, Wo, alpha);
@@ -174,13 +174,13 @@ BsdfSample metalWorkflowGetSample(vec3 N, vec3 Wo, vec3 albedo, float metallic, 
 	}
 
 	float NoWi = dot(N, Wi);
-	if (NoWi < 0) INVALID_SAMPLE;
+	if (NoWi < 0) return INVALID_SAMPLE;
 
 	vec3 H = normalize(Wi + Wo);
 	vec3 bsdf = metalWorkflowBsdf(Wo, Wi, N, albedo, metallic, roughness);
 	float pdf = metalWorkflowPdf(Wo, Wi, N, metallic, alpha);
 
-	return bsdfSample(Wi, pdf, bsdf, sampleDiffuse ? Diffuse : GlosRefl);
+	return bsdfSample(Wi, pdf, bsdf, type);
 }
 
 bool refract(out vec3 Wt, vec3 Wi, vec3 N, float eta)

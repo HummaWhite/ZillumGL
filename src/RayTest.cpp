@@ -45,8 +45,8 @@ void RayTest::init()
 	scene.envMap = std::make_shared<EnvironmentMap>();
 	scene.envMap->load("res/texture/none.png");
 	camera.setFOV(90.0f);
-	camera.setPos({ 1.583f, -4.044f, 4.9f });
-	camera.lookAt({ 0.0f, 0.0f, 0.9f });
+	camera.setPos({ 0.0f, -3.0f, 1.0f });
+	camera.lookAt({ 0.0f, 0.0f, 0.0f });
 	camera.setAspect((float)this->windowWidth() / this->windowHeight());
 
 	sceneBuffers = scene.genBuffers();
@@ -76,6 +76,7 @@ void RayTest::init()
 	rayTestShader.set1i("objPrimCount", scene.objPrimCount);
 	rayTestShader.set1f("bvhDepth", glm::log2((float)boxCount));
 	rayTestShader.set1i("bvhSize", boxCount);
+
 	postShader.set1i("toneMapping", toneMapping);
 
 	this->setupGUI();
@@ -181,13 +182,30 @@ void RayTest::renderFrame()
 	rayTestShader.set1i("freeCounter", freeCounter);
 	rayTestShader.set1i("spp", curSpp);
 
+	/*int xTimes = (this->windowWidth() + tileSize - 1) / tileSize;
+	int yTimes = (this->windowHeight() + tileSize - 1) / tileSize;
+
+	for (int i = 0; i < xTimes; i++)
+	{
+		for (int j = 0; j < yTimes; j++)
+		{
+			int xSize = min(tileSize, this->windowWidth() - i * tileSize);
+			int ySize = min(tileSize, this->windowHeight() - j * tileSize);
+			this->setViewport(i * tileSize, j * tileSize, xSize, ySize);
+			glm::vec2 base = { float(i * tileSize) / this->windowWidth(), float(j * tileSize) / this->windowHeight() };
+			glm::vec2 scale = { float(xSize) / this->windowWidth(), float(ySize) / this->windowHeight() };
+			rayTestShader.set2f("baseCoord", base.x, base.y);
+			rayTestShader.set2f("tileScale", scale.x, scale.y);
+			renderer.draw(screenVA, rayTestShader);
+		}
+	}*/
 	renderer.draw(screenVA, rayTestShader);
 	frame[curFrame].unbind();
 
 	renderer.clear(0.0f, 0.0f, 0.0f);
 	postShader.setTexture("frameBuffer", frameTex[curFrame], 0);
 	//postShader.setTexture("frameBuffer", envMap->getCdfTable(), 0);
-
+	this->setViewport(0, 0, this->windowWidth(), this->windowHeight());
 	renderer.draw(screenVA, postShader);
 }
 
@@ -206,6 +224,8 @@ void RayTest::reset()
 	rayTestShader.setVec3("camPos", camera.pos());
 	rayTestShader.set1f("tanFOV", glm::tan(glm::radians(camera.FOV() * 0.5f)));
 	rayTestShader.set1f("camAsp", (float)this->windowWidth() / (float)this->windowHeight());
+	rayTestShader.set1f("lensRadius", lensRadius);
+	rayTestShader.set1f("focalDist", focalDist);
 
 	rayTestShader.set1f("envStrength", scene.envStrength);
 	rayTestShader.set1i("sampleLight", scene.sampleLight);
@@ -278,6 +298,20 @@ void RayTest::renderGUI()
 				m.type == Material::MetalWorkflow ? 1.0f : 4.0f)) reset();
 		}
 
+		/*if (ImGui::Button("Dump Materials"))
+		{
+			auto printVec3 = [](const glm::vec3& v)
+			{
+				std::cout << v.x << " " << v.y << " " << v.z << "\n";
+			};
+
+			for (auto& i : materials)
+			{
+				printVec3(i.albedo);
+				std::cout << i.metIor << " " << i.roughness << "\n";
+			}
+		}*/
+
 		int tmp;
 		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.2f);
 		if (ImGui::Combo("EnvMap", &tmp, envStr.c_str(), envList.size()))
@@ -322,6 +356,8 @@ void RayTest::renderGUI()
 		ImGui::Checkbox("Vertical Sync", &verticalSync);
 		if (ImGui::DragFloat3("Position", (float*)&camera, 0.1f)) reset();
 		if (ImGui::SliderFloat("FOV", (float*)&camera + 15, 0.0f, 90.0f)) reset();
+		if (ImGui::DragFloat("FocalDistance", &focalDist, 0.01f, 0.004f, 100.0f)) reset();
+		if (ImGui::DragFloat("LensRadius", &lensRadius, 0.001f, 0.0f, 10.0f)) reset();
 		if (ImGui::Button("Exit"))
 		{
 			this->setTerminateStatus(true);

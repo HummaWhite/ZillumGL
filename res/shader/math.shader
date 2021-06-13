@@ -10,10 +10,15 @@ float square(float x)
 	return x * x;
 }
 
-float heuristic(float pf, int fn, float pg, int gn)
+float powerHeuristic(float pf, int fn, float pg, int gn)
 {
 	float f = pf * float(fn);
 	float g = pg * float(gn);
+	return f * f / (f * f + g * g);
+}
+
+float biHeuristic(float f, float g)
+{
 	return f * f / (f * f + g * g);
 }
 
@@ -110,9 +115,7 @@ vec4 sampleCosineWeighted(vec3 N)
 {
 	vec2 uv = toConcentricDisk(randBox());
 	float z = sqrt(1.0 - dot(uv, uv));
-	vec3 v = vec3(uv, z);
-	v = normalToWorld(N, v);
-
+	vec3 v = normalToWorld(N, vec3(uv, z));
 	return vec4(v, PiInv * z);
 }
 
@@ -143,8 +146,13 @@ float angleBetween(vec3 x, vec3 y)
 
 vec3 triangleRandomPoint(vec3 va, vec3 vb, vec3 vc)
 {
-	float u = rand(), v = rand(0.0, 1 - u);
-	return va + u * (vc - va) + v * (vb - va);
+	float u = rand(), v = rand();
+	if (u + v > 1.0)
+	{
+		u = 1.0 - u;
+		v = 1.0 - v;
+	}
+	return va + (vb - va) * u + (vc - va) * v;
 }
 
 float triangleArea(vec3 va, vec3 vb, vec3 vc)
