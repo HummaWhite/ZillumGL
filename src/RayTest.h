@@ -6,7 +6,7 @@ class RayTest :
 	public EngineBase
 {
 public:
-	RayTest(int maxSpp, bool limitSpp);
+	RayTest();
 	~RayTest();
 
 private:
@@ -38,9 +38,9 @@ private:
 	int curFrame = 0;
 	int freeCounter = 0;
 
-	const int MAX_SPP;
+	int maxSpp = 64;
 	int curSpp = 0;
-	bool limitSpp;
+	bool limitSpp = false;
 
 	bool verticalSync = false;
 
@@ -48,11 +48,6 @@ private:
 	SceneBuffer sceneBuffers;
 	
 	int materialIndex = 0;
-
-	Texture albedoMap;
-	Texture matallicMap;
-	Texture roughnessMap;
-	Texture normalMap;
 
 	std::vector<std::string> envList;
 	std::string envStr;
@@ -79,4 +74,11 @@ private:
 
 	float focalDist = 1.0f;
 	float lensRadius = 0.0f;
+
+	const int sampleNum = 131072;
+	const int sampleDim = 256;
+	int sampler = 0;
+	std::shared_ptr<BufferTexture> haltonTex;
+	std::shared_ptr<BufferTexture> sobolTex;
+	std::shared_ptr<Texture> noiseTex;
 };

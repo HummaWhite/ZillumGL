@@ -1,7 +1,6 @@
 #include "RayTest.h"
 
-RayTest::RayTest(int maxSpp, bool limitSpp):
-	MAX_SPP(maxSpp), limitSpp(limitSpp)
+RayTest::RayTest()
 {
 	glfwSetInputMode(this->window(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
@@ -45,8 +44,7 @@ void RayTest::init()
 	scene.envMap = std::make_shared<EnvironmentMap>();
 	scene.envMap->load("res/texture/none.png");
 	camera.setFOV(90.0f);
-	camera.setPos({ 0.0f, -3.0f, 1.0f });
-	camera.lookAt({ 0.0f, 0.0f, 0.0f });
+	camera.setPos({ 0.0f, -3.7f, 1.0f });
 	camera.setAspect((float)this->windowWidth() / this->windowHeight());
 
 	sceneBuffers = scene.genBuffers();
@@ -54,6 +52,9 @@ void RayTest::init()
 	boxCount = sceneBuffers.bound->size() / sizeof(AABB);
 	vertexCount = sceneBuffers.vertex->size() / sizeof(glm::vec3);
 	triangleCount = sceneBuffers.index->size() / sizeof(uint32_t) / 3;
+
+	sobolTex = Sampler::genSobolSeqTexture(sampleNum, sampleDim);
+	noiseTex = Sampler::genNoiseTexture(this->windowWidth(), this->windowHeight());
 
 	rayTestShader.setTexture("vertices", *sceneBuffers.vertex, 1);
 	rayTestShader.setTexture("normals", *sceneBuffers.normal, 2);
@@ -70,12 +71,16 @@ void RayTest::init()
 	rayTestShader.setTexture("lightPower", *sceneBuffers.lightPower, 12);
 	rayTestShader.setTexture("lightAlias", *sceneBuffers.lightAlias, 13);
 	rayTestShader.setTexture("lightProb", *sceneBuffers.lightProb, 14);
+	rayTestShader.setTexture("sobolSeq", *sobolTex, 15);
+	rayTestShader.setTexture("noiseTex", *noiseTex, 16);
 	rayTestShader.set1i("nLights", scene.nLights);
 	rayTestShader.set1f("lightSum", scene.lightSum);
 	rayTestShader.set1f("envSum", scene.envMap->sum());
 	rayTestShader.set1i("objPrimCount", scene.objPrimCount);
 	rayTestShader.set1f("bvhDepth", glm::log2((float)boxCount));
 	rayTestShader.set1i("bvhSize", boxCount);
+	rayTestShader.set1i("sampleDim", sampleDim);
+	rayTestShader.set1i("sampleNum", sampleNum);
 
 	postShader.set1i("toneMapping", toneMapping);
 
@@ -92,7 +97,7 @@ void RayTest::renderLoop()
 	this->renderFrame();
 	freeCounter++;
 
-	if (curSpp < MAX_SPP || !limitSpp)
+	if (curSpp < maxSpp || !limitSpp)
 	{
 		curSpp++;
 		curFrame ^= 1;
@@ -182,23 +187,6 @@ void RayTest::renderFrame()
 	rayTestShader.set1i("freeCounter", freeCounter);
 	rayTestShader.set1i("spp", curSpp);
 
-	/*int xTimes = (this->windowWidth() + tileSize - 1) / tileSize;
-	int yTimes = (this->windowHeight() + tileSize - 1) / tileSize;
-
-	for (int i = 0; i < xTimes; i++)
-	{
-		for (int j = 0; j < yTimes; j++)
-		{
-			int xSize = min(tileSize, this->windowWidth() - i * tileSize);
-			int ySize = min(tileSize, this->windowHeight() - j * tileSize);
-			this->setViewport(i * tileSize, j * tileSize, xSize, ySize);
-			glm::vec2 base = { float(i * tileSize) / this->windowWidth(), float(j * tileSize) / this->windowHeight() };
-			glm::vec2 scale = { float(xSize) / this->windowWidth(), float(ySize) / this->windowHeight() };
-			rayTestShader.set2f("baseCoord", base.x, base.y);
-			rayTestShader.set2f("tileScale", scale.x, scale.y);
-			renderer.draw(screenVA, rayTestShader);
-		}
-	}*/
 	renderer.draw(screenVA, rayTestShader);
 	frame[curFrame].unbind();
 
@@ -235,6 +223,8 @@ void RayTest::reset()
 	rayTestShader.set1f("rouletteProb", rouletteProb);
 	rayTestShader.set1i("maxBounce", maxBounce);
 	rayTestShader.set1i("matIndex", materialIndex);
+
+	rayTestShader.set1i("sampler", sampler);
 
 	frame[curFrame].bind();
 	renderer.clear();
@@ -298,19 +288,8 @@ void RayTest::renderGUI()
 				m.type == Material::MetalWorkflow ? 1.0f : 4.0f)) reset();
 		}
 
-		/*if (ImGui::Button("Dump Materials"))
-		{
-			auto printVec3 = [](const glm::vec3& v)
-			{
-				std::cout << v.x << " " << v.y << " " << v.z << "\n";
-			};
-
-			for (auto& i : materials)
-			{
-				printVec3(i.albedo);
-				std::cout << i.metIor << " " << i.roughness << "\n";
-			}
-		}*/
+		const char* samplers[] = { "Independent", "Sobol" };
+		if (ImGui::Combo("Sampler", &sampler, samplers, IM_ARRAYSIZE(samplers))) reset();
 
 		int tmp;
 		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.2f);
@@ -358,6 +337,15 @@ void RayTest::renderGUI()
 		if (ImGui::SliderFloat("FOV", (float*)&camera + 15, 0.0f, 90.0f)) reset();
 		if (ImGui::DragFloat("FocalDistance", &focalDist, 0.01f, 0.004f, 100.0f)) reset();
 		if (ImGui::DragFloat("LensRadius", &lensRadius, 0.001f, 0.0f, 10.0f)) reset();
+
+		if (ImGui::Checkbox("Limit SPP", &limitSpp) && curSpp > maxSpp) reset();
+		if (limitSpp) 
+		{
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(-100);
+			if (ImGui::DragInt("Max SPP", &maxSpp, 1.0f, 0, 131072) && curSpp > maxSpp) reset();
+		}
+
 		if (ImGui::Button("Exit"))
 		{
 			this->setTerminateStatus(true);

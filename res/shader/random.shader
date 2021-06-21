@@ -1,5 +1,7 @@
 =type lib
 
+uniform samplerBuffer halton;
+
 uint randSeed;
 
 uint hash(uint seed)
@@ -43,4 +45,31 @@ float rand(float vMin, float vMax)
 vec2 randBox()
 {
 	return vec2(rand(), rand());
+}
+
+uniform int sampleDim;
+uniform samplerBuffer sobolSeq;
+uniform sampler2D noiseTex;
+uniform int sampleNum;
+uniform int sampler;
+
+#define Sampler int
+
+int sampleOffset;
+uint sampleSeed;
+
+float sample1D(inout Sampler s)
+{
+	if (sampler == 0) return rand();
+	
+	float r = texelFetch(sobolSeq, sampleOffset + s).r;
+	r += float(sampleSeed) / 4294967296.0;
+	sampleSeed = hash(sampleSeed);
+	s++;
+	return r > 1.0 ? r - 1.0 : r;
+}
+
+vec2 sample2D(inout Sampler s)
+{
+	return vec2(sample1D(s), sample1D(s));
 }

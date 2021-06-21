@@ -101,7 +101,7 @@ HitInfo intersectTriangle(int id, Ray ray)
 	return intersectTriangle(a, b, c, ray);
 }
 
-vec3 triangleRandomPoint(int id)
+vec3 triangleRandomPoint(int id, vec2 u)
 {
 	int ia = texelFetch(indices, id * 3 + 0).r;
 	int ib = texelFetch(indices, id * 3 + 1).r;
@@ -111,7 +111,7 @@ vec3 triangleRandomPoint(int id)
 	vec3 b = texelFetch(vertices, ib).xyz;
 	vec3 c = texelFetch(vertices, ic).xyz;
 
-	return triangleRandomPoint(a, b, c);
+	return sampleTriangleUniform(a, b, c, u);
 }
 
 float triangleArea(int id)

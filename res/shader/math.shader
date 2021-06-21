@@ -103,17 +103,17 @@ vec3 normalToWorld(vec3 N, vec3 v)
 	return normalize(tbnMatrix(N) * v);
 }
 
-vec3 sampleUniformHemisphere(vec3 N)
+vec3 sampleUniformHemisphere(vec3 N, vec2 u)
 {
-	float theta = rand(0.0, Pi * 2.0);
-	float phi = rand(0.0, Pi * 0.5);
+	float theta = u.x * 2.0 * Pi;
+	float phi = u.y * 0.5 * Pi;
 	vec3 v = vec3(cos(theta) * sin(phi), sin(theta) * sin(phi), cos(phi));
 	return normalToWorld(N, v);
 }
 
-vec4 sampleCosineWeighted(vec3 N)
+vec4 sampleCosineWeighted(vec3 N, vec2 u)
 {
-	vec2 uv = toConcentricDisk(randBox());
+	vec2 uv = toConcentricDisk(u);
 	float z = sqrt(1.0 - dot(uv, uv));
 	vec3 v = normalToWorld(N, vec3(uv, z));
 	return vec4(v, PiInv * z);
@@ -144,15 +144,12 @@ float angleBetween(vec3 x, vec3 y)
 	else return 2.0 * asin(length(y - x) * 0.5);
 }
 
-vec3 triangleRandomPoint(vec3 va, vec3 vb, vec3 vc)
+vec3 sampleTriangleUniform(vec3 va, vec3 vb, vec3 vc, vec2 uv)
 {
-	float u = rand(), v = rand();
-	if (u + v > 1.0)
-	{
-		u = 1.0 - u;
-		v = 1.0 - v;
-	}
-	return va + (vb - va) * u + (vc - va) * v;
+	float r = sqrt(uv.y);
+	float u = 1.0 - r;
+	float v = uv.y * r;
+	return va * (1.0 - u - v) + vb * u + vc * v;
 }
 
 float triangleArea(vec3 va, vec3 vb, vec3 vc)

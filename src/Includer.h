@@ -8,7 +8,6 @@
 #include "core/FrameBuffer.h"
 #include "core/GLSizeofType.h"
 #include "core/Inputs.h"
-#include "core/Lighting.h"
 #include "core/Model.h"
 #include "core/RenderBuffer.h"
 #include "core/Renderer.h"
@@ -17,6 +16,7 @@
 #include "core/Texture.h"
 #include "core/VertexArray.h"
 #include "core/VerticalSync.h"
+#include "core/Sampler.h"
 
 static char modelPathBuf[128] = { 0 };
 static char shaderPathBuf[128] = { 0 };

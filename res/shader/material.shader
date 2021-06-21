@@ -85,24 +85,24 @@ float ggxPdfVisibleWm(vec3 N, vec3 M, vec3 Wo, float alpha)
 	return ggx(dot(N, M), alpha) * schlickG(dot(N, Wo), alpha) * absDot(M, Wo) / absDot(N, Wo);
 }
 
-vec3 ggxSampleWm(vec2 xi, vec3 N, vec3 Wo, float alpha)
+vec3 ggxSampleWm(vec3 N, vec3 Wo, float alpha, vec2 u)
 {
-	xi = toConcentricDisk(xi);
+	vec2 xi = toConcentricDisk(u);
 
 	vec3 H = vec3(xi.x, xi.y, sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y)));
 	H = normalize(H * vec3(alpha, alpha, 1.0));
 	return normalToWorld(N, H);
 }
 
-vec3 ggxSampleWm(vec2 xi, vec3 N, vec3 Wo, vec2 alpha)
+vec3 ggxSampleWm(vec3 N, vec3 Wo, vec2 alpha, vec2 u)
 {
-	xi = toConcentricDisk(xi);
+	vec2 xi = toConcentricDisk(u);
 	vec3 H = vec3(xi.x, xi.y, sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y)));
 	H = normalize(H * vec3(alpha, 1.0));
 	return normalToWorld(N, H);
 }
 
-vec3 ggxSampleVisibleWm(vec2 xi, vec3 N, vec3 Wo, float alpha)
+vec3 ggxSampleVisibleWm(vec3 N, vec3 Wo, float alpha, vec2 u)
 {
 	mat3 tbn = tbnMatrix(N);
 	mat3 tbnInv = inverse(tbn);
@@ -113,7 +113,7 @@ vec3 ggxSampleVisibleWm(vec2 xi, vec3 N, vec3 Wo, float alpha)
 	vec3 T1 = lensq > 0.0 ? vec3(-Vh.y, Vh.x, 0.0) / sqrt(lensq) : vec3(1.0, 0.0, 0.0);
 	vec3 T2 = cross(Vh, T1);
 
-	xi = toConcentricDisk(xi);
+	vec2 xi = toConcentricDisk(u);
 	float s = 0.5 * (1.0 + Vh.z);
 	xi.y = (1.0 - s) * sqrt(1.0 - xi.x * xi.x) + s * xi.y;
 
@@ -159,17 +159,17 @@ float metalWorkflowPdf(vec3 Wo, vec3 Wi, vec3 N, float metallic, float alpha)
 	return mix(pdfDiff, pdfSpec, 1.0f / (2.0f - metallic));
 }
 
-BsdfSample metalWorkflowGetSample(vec3 N, vec3 Wo, vec3 albedo, float metallic, float roughness)
+BsdfSample metalWorkflowGetSample(vec3 N, vec3 Wo, vec3 albedo, float metallic, float roughness, float u, vec2 u2)
 {
 	float spec = 1.0 / (2.0 - metallic);
-	uint type = rand() > spec ? Diffuse : GlosRefl;
+	uint type = u > spec ? Diffuse : GlosRefl;
 	float alpha = square(roughness);
 
 	vec3 Wi;
-	if (type == Diffuse) Wi = sampleCosineWeighted(N).xyz;
+	if (type == Diffuse) Wi = sampleCosineWeighted(N, u2).xyz;
 	else
 	{
-		vec3 H = ggxSampleVisibleWm(randBox(), N, Wo, alpha);
+		vec3 H = ggxSampleVisibleWm(N, Wo, alpha, u2);
 		Wi = reflect(-Wo, H);
 	}
 
@@ -271,13 +271,13 @@ float dielectricPdf(vec3 Wo, vec3 Wi, vec3 N, float ior, float roughness)
 	}
 }
 
-BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roughness)
+BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roughness, float u, vec2 u2)
 {
 	if (approximateDelta(roughness))
 	{
 		float refl = fresnelDielectric(dot(N, Wo), ior), trans = 1.0 - refl;
 
-		if (rand() < refl)
+		if (u < refl)
 		{
 			vec3 Wi = reflect(-Wo, N);
 			return bsdfSample(Wi, 1.0, tint, SpecRefl);
@@ -294,12 +294,12 @@ BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roug
 	else
 	{
 		float alpha = roughness * roughness;
-		vec3 H = ggxSampleWm(randBox(), N, Wo, alpha);
+		vec3 H = ggxSampleWm(N, Wo, alpha, u2);
 		if (dot(N, H) < 0.0f) H = -H;
 		float refl = fresnelDielectric(dot(H, Wo), ior);
 		float trans = 1.0f - refl;
 
-		if (rand() < refl)
+		if (u < refl)
 		{
 			vec3 Wi = -reflect(Wo, H);
 			if (!sameHemisphere(N, Wo, Wi)) return INVALID_SAMPLE;
