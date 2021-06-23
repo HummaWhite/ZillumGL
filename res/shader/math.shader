@@ -148,7 +148,7 @@ vec3 sampleTriangleUniform(vec3 va, vec3 vb, vec3 vc, vec2 uv)
 {
 	float r = sqrt(uv.y);
 	float u = 1.0 - r;
-	float v = uv.y * r;
+	float v = uv.x * r;
 	return va * (1.0 - u - v) + vb * u + vc * v;
 }
 
