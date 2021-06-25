@@ -151,8 +151,8 @@ std::tuple<std::vector<glm::vec3>, std::vector<int32_t>, std::vector<float>> Sce
 		}
 	}
 
-	float sumInv = 1.0f / lightSum;
 	nLights = pdf.size();
+	float sumInv = nLights / lightSum;
 	alias.resize(nLights);
 
 	Element* greater = new Element[nLights * 2], * lesser = new Element[nLights * 2];
@@ -180,14 +180,14 @@ std::tuple<std::vector<glm::vec3>, std::vector<int32_t>, std::vector<float>> Sce
 	{
 		auto [g, pg] = greater[--gTop];
 		alias[g] = g;
-		pdf[g] = 1.0f;
+		pdf[g] = pg;
 	}
 
 	while (lTop != 0)
 	{
 		auto [l, pl] = lesser[--lTop];
 		alias[l] = l;
-		pdf[l] = 1.0f;
+		pdf[l] = pl;
 	}
 
 	delete[] greater;
