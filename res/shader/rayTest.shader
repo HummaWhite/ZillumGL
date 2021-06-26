@@ -1,20 +1,4 @@
-=type vertex
-#version 450 core
-layout(location = 0) in vec2 pos;
-
-out vec2 scrCoord;
-
-void main()
-{
-	vec2 ndc = pos * 2.0 - 1.0;
-	gl_Position = vec4(ndc, 0.0, 1.0);
-	scrCoord = pos;
-}
-
-=type fragment
-#version 450 core
-in vec2 scrCoord;
-out vec4 FragColor;
+=type lib
 
 bool BUG = false;
 vec3 BUGVAL;
@@ -38,7 +22,6 @@ uniform float lensRadius;
 uniform float focalDist;
 uniform float camAsp;
 uniform float camNear;
-uniform sampler2D lastFrame;
 uniform bool showBVH;
 uniform int matIndex;
 uniform float bvhDepth;
@@ -49,6 +32,7 @@ uniform bool aoMode;
 uniform vec3 aoCoef;
 uniform vec2 baseCoord;
 uniform vec2 tileScale;
+uniform ivec2 frameSize;
 
 vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 {
@@ -192,10 +176,10 @@ vec3 traceAO(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 	return 1.0 - ao / float(maxBounce);
 }
 
-Ray sampleLensCamera(inout Sampler s)
+Ray sampleLensCamera(vec2 uv, inout Sampler s)
 {
-	vec2 texelSize = 1.0 / textureSize(lastFrame, 0).xy;
-	vec2 biasedCoord = scrCoord + texelSize * sample2D(s);
+	vec2 texelSize = 1.0 / vec2(frameSize);
+	vec2 biasedCoord = uv+ texelSize * sample2D(s);
 	vec2 ndc = biasedCoord * 2.0 - 1.0;
 
 	vec3 pLens = vec3(toConcentricDisk(sample2D(s)) * lensRadius, 0.0);
@@ -210,29 +194,9 @@ Ray sampleLensCamera(inout Sampler s)
 	return ret;
 }
 
-void main()
+vec3 getResult(Ray ray, inout Sampler s)
 {
-	int sampleIdx = 0;
-
-	vec2 texSize = textureSize(lastFrame, 0).xy;
-	//vec2 texCoord = texSize * scrCoord;
-	//float noiseX = (noise(texCoord) + 1.0) / 2.0;
-	//float noiseY = (noise(texCoord.yx) + 1.0) / 2.0;
-	//vec2 noiseCoord = vec2(noiseX, noiseY);
-	vec2 noiseCoord = texture(noiseTex, scrCoord).xy;
-	noiseCoord = texture(noiseTex, noiseCoord).xy;
-	vec2 texCoord = texSize * noiseCoord;
-	randSeed = (uint(texCoord.x) * freeCounter) + uint(texCoord.y);
-	sampleSeed = uint(texCoord.x);
-
-	//sampleOffset = spp + int(texCoord.x) + int(texCoord.y);
-	sampleOffset = spp * sampleDim;
-	if (sampleOffset > sampleNum) sampleOffset -= sampleNum;
-
 	vec3 result = vec3(0.0);
-
-	Ray ray = sampleLensCamera(sampleIdx);
-
 	SceneHitInfo scHitInfo = sceneHit(ray);
 	int primId = scHitInfo.primId;
 	float dist = scHitInfo.dist;
@@ -254,20 +218,12 @@ void main()
 		{
 			ray.ori = hitPoint;
 			SurfaceInfo sInfo = triangleSurfaceInfo(primId, ray.ori);
-			result = aoMode ? traceAO(ray, primId, sInfo, sampleIdx) : trace(ray, primId, sInfo, sampleIdx);
+			result = aoMode ? traceAO(ray, primId, sInfo, s) : trace(ray, primId, sInfo, s);
 		}
 		else
 		{
 			result = lightGetRadiance(primId - objPrimCount, hitPoint, -ray.dir);
 		}
 	}
-
-	vec3 lastRes = texture(lastFrame, scrCoord).rgb;
-
-	if (isnan(result.x) || isnan(result.y) || isnan(result.z)) result = lastRes;
-	else result = (lastRes * float(spp) + result) / float(spp + 1);
-
-	if (BUG) result = BUGVAL;
-
-	FragColor = vec4(result, 1.0);
+	return result;
 }

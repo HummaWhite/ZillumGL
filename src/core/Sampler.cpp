@@ -43,7 +43,6 @@ namespace Sampler
 
 		uint32_t L = (uint32_t)std::ceil(std::log((double)nSamples) / std::log(2.0));
 
-		// C[i] = index from the right of the first zero bit of i
 		uint32_t* C = new uint32_t[nSamples];
 		for (uint32_t i = 0; i < nSamples; i++)
 		{

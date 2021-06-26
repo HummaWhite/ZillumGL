@@ -33,8 +33,7 @@ private:
 
 	Camera camera = Camera({ 0.0f, -3.0f, 2.0f });
 
-	FrameBuffer frame[2];
-	Texture frameTex[2];
+	Texture frameTex;
 	int curFrame = 0;
 	int freeCounter = 0;
 

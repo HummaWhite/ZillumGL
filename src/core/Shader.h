@@ -14,9 +14,9 @@
 
 const std::string SHADER_DEFAULT_DIR = "res/shader/";
 
-enum class ShaderLoadStat
+enum class ShaderType
 {
-	None, Vertex, Fragment, Geometry
+	Graphics, Compute
 };
 
 class Shader
@@ -34,6 +34,7 @@ public:
 
 	void set1i(const char* name, int v) const;
 	void set1f(const char* name, float v0) const;
+	void set2i(const char* name, int v0, int v1) const;
 	void set2f(const char* name, float v0, float v1) const;
 	void set3f(const char* name, float v0, float v1, float v2) const;
 	void set4f(const char* name, float v0, float v1, float v2, float v3) const;
@@ -53,18 +54,36 @@ public:
 	static GLint getUniformLocation(GLuint programID, const char* name);
 
 	std::string name() const { return m_Name; }
+	ShaderType type() const { return m_Type; }
 
 	void resetTextureMap();
 
+	void setComputeShaderSizeHint(int x, int y, int z);
+
 private:
-	void loadShader(std::fstream& file, std::string& vertexCode, std::string& fragCode, std::string& geomCode, ShaderLoadStat stat, std::map<std::string, bool>& inclRec);
-	void compileShader(const char* vertexSource, const char* fragmentSource, const char* geometrySource);
+	enum class ShaderLoadStat
+	{
+		None, Vertex, Fragment, Geometry, Compute
+	};
+
+	struct ShaderText
+	{
+		std::string vertex;
+		std::string fragment;
+		std::string geometry;
+		std::string compute;
+	};
+
+private:
+	void loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat stat, std::map<std::string, bool>& inclRec);
+	void compileShader(const ShaderText& text);
 	void checkShaderCompileInfo(uint32_t shaderId, const std::string& name);
 	void checkShaderLinkInfo();
 
 private:
 	GLuint m_ID;
 	std::string m_Name;
+	ShaderType m_Type;
 
 	std::map<std::string, int> m_TextureMap;
 };

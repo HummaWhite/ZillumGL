@@ -66,6 +66,7 @@ float sample1D(inout Sampler s)
 	r += float(sampleSeed) / 4294967296.0;
 	sampleSeed = hash(sampleSeed);
 	s++;
+	//if (s >= sampleDim) s = 0;
 	return r > 1.0 ? r - 1.0 : r;
 }
 

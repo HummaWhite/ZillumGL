@@ -9,9 +9,8 @@
 
 bool Shader::load(const char* filePath)
 {
-	std::string vertexCode;
-	std::string fragmentCode;
-	std::string geometryCode;
+	m_Type = ShaderType::Graphics;
+	ShaderText text;
 	std::fstream file;
 	
 	std::map<std::string, bool> inclRec;
@@ -23,7 +22,7 @@ bool Shader::load(const char* filePath)
 
 	try
 	{
-		loadShader(file, vertexCode, fragmentCode, geometryCode, ShaderLoadStat::None, inclRec);
+		loadShader(file, text, ShaderLoadStat::None, inclRec);
 	}
 	catch (const char* e)
 	{
@@ -31,11 +30,7 @@ bool Shader::load(const char* filePath)
 		return false;
 	}
 
-	//std::cout << fragmentCode << std::endl;
-
-	const char* geometry = (geometryCode != "") ? geometryCode.c_str() : nullptr;
-	compileShader(vertexCode.c_str(), fragmentCode.c_str(), geometry);
-
+	compileShader(text);
 	m_Name = std::string(filePath);
 	return true;
 }
@@ -68,6 +63,11 @@ void Shader::set1i(const char* name, int v) const
 void Shader::set1f(const char* name, float v0) const
 {
 	glProgramUniform1f(m_ID, getUniformLocation(name), v0);
+}
+
+void Shader::set2i(const char* name, int v0, int v1) const
+{
+	glProgramUniform2i(m_ID, getUniformLocation(name), v0, v1);
 }
 
 void Shader::set2f(const char* name, float v0, float v1) const
@@ -153,7 +153,7 @@ void Shader::resetTextureMap()
 	m_TextureMap.clear();
 }
 
-void Shader::loadShader(std::fstream& file, std::string& vertexCode, std::string& fragCode, std::string& geomCode, ShaderLoadStat stat, std::map<std::string, bool>& inclRec)
+void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat stat, std::map<std::string, bool>& inclRec)
 {
 	std::string line;
 	while (std::getline(file, line))
@@ -180,6 +180,12 @@ void Shader::loadShader(std::fstream& file, std::string& vertexCode, std::string
 				{
 					if (stat == ShaderLoadStat::Geometry) throw "redefinition";
 				}
+				else if (arg == "compute")
+				{
+					if (stat == ShaderLoadStat::Compute) throw "redefinition";
+					stat = ShaderLoadStat::Compute;
+					m_Type = ShaderType::Compute;
+				}
 				else if (arg != "lib") throw "included file is not a lib";
 				continue;
 			}
@@ -193,7 +199,7 @@ void Shader::loadShader(std::fstream& file, std::string& vertexCode, std::string
 				file.open(arg);
 				if (!file.is_open()) throw "included file not found";
 
-				loadShader(file, vertexCode, fragCode, geomCode, stat, inclRec);
+				loadShader(file, text, stat, inclRec);
 				inclRec[arg] = true;
 				continue;
 			}
@@ -202,51 +208,43 @@ void Shader::loadShader(std::fstream& file, std::string& vertexCode, std::string
 		switch (stat)
 		{
 		case ShaderLoadStat::Vertex:
-			vertexCode += line + '\n';
+			text.vertex += line + '\n';
 			break;
 		case ShaderLoadStat::Fragment:
-			fragCode += line + '\n';
+			text.fragment += line + '\n';
 			break;
 		case ShaderLoadStat::Geometry:
-			geomCode += line + '\n';
+			text.geometry += line + '\n';
+			break;
+		case ShaderLoadStat::Compute:
+			text.compute += line + '\n';
 			break;
 		}
 	}
 }
 
-void Shader::compileShader(const char* vertexSource, const char* fragmentSource, const char* geometrySource)
+void Shader::compileShader(const ShaderText& text)
 {
-	GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(vertexShader, 1, &vertexSource, NULL);
-	glCompileShader(vertexShader);
-	checkShaderCompileInfo(vertexShader, "Vertex");
-
-	GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
-	glCompileShader(fragmentShader);
-	checkShaderCompileInfo(fragmentShader, "Fragment");
-
-	GLuint geometryShader;
-	if (geometrySource != nullptr)
-	{
-		geometryShader = glCreateShader(GL_GEOMETRY_SHADER);
-		glShaderSource(geometryShader, 1, &geometrySource, NULL);
-		glCompileShader(geometryShader);
-		checkShaderCompileInfo(geometryShader, "Geometry");
-	}
+	int shaderType[] = { GL_VERTEX_SHADER, GL_FRAGMENT_SHADER, GL_GEOMETRY_SHADER, GL_COMPUTE_SHADER };
+	std::string shaderName[] = { "Vertex", "Fragment", "Geometry", "Compute" };
+	const std::string* shaders[] = { &text.vertex, &text.fragment, &text.geometry, &text.compute };
+	const char *shaderText[] = { text.vertex.c_str(), text.fragment.c_str(), text.geometry.c_str(), text.compute.c_str() };
 
 	m_ID = glCreateProgram();
-	glAttachShader(m_ID, vertexShader);
-	glAttachShader(m_ID, fragmentShader);
-	if (geometrySource != nullptr)
-		glAttachShader(m_ID, geometryShader);
+
+	for (int i = 0; i < 4; i++)
+	{
+		if (shaders[i]->length() == 0) continue;
+		auto shader = glCreateShader(shaderType[i]);
+		glShaderSource(shader, 1, &shaderText[i], nullptr);
+		glCompileShader(shader);
+		checkShaderCompileInfo(shader, shaderName[i]);
+		glAttachShader(m_ID, shader);
+		glDeleteShader(shader);
+	}
+
 	glLinkProgram(m_ID);
 	checkShaderLinkInfo();
-
-	glDeleteShader(vertexShader);
-	glDeleteShader(fragmentShader);
-	if (geometrySource != nullptr)
-		glDeleteShader(geometryShader);
 }
 
 void Shader::checkShaderCompileInfo(uint32_t shaderId, const std::string& name)
