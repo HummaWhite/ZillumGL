@@ -1,6 +1,4 @@
 =type compute
-#version 450 core
-layout(local_size_x = 48, local_size_y = 32) in;
 
 layout(rgba32f, binding = 0) uniform image2D frame;
 //layout(rgba32f, binding = 1) uniform writeonly image2D outImage;
@@ -22,11 +20,11 @@ void main()
 	noiseCoord = texture(noiseTex, noiseCoord).xy;
 	vec2 texCoord = texSize * noiseCoord;
 	randSeed = (uint(texCoord.x) * freeCounter) + uint(texCoord.y);
-	sampleSeed = uint(texCoord.x);
+	sampleSeed = uint(texCoord.x) * uint(texCoord.y);
 
 	//sampleOffset = spp + int(texCoord.x) + int(texCoord.y);
 	sampleOffset = spp * sampleDim;
-	if (sampleOffset > sampleNum) sampleOffset -= sampleNum;
+	if (sampleOffset > sampleNum * sampleDim) sampleOffset -= sampleNum * sampleDim;
 
 	vec3 result = vec3(0.0);
 

@@ -48,6 +48,7 @@ void EnvironmentMap::load(const std::string& path)
 	sumPdf = setupAliasTable(alias + width, pdf + width, height, width + 1);
 
 	aliasTable.loadData(GL_R32I, width + 1, height, GL_RED_INTEGER, GL_INT, alias);
+	aliasTable.setFilterAndWrapping(GL_NEAREST, GL_CLAMP_TO_EDGE);
 	aliasProb.loadData(GL_R32F, width + 1, height, GL_RED, GL_FLOAT, pdf);
 	delete[] pdf;
 	delete[] alias;

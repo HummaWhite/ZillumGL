@@ -16,6 +16,17 @@ namespace Sampler
 		return static_cast<float>(inv) / numPoints;
 	}
 
+	uint32_t sobolSample(uint32_t index, int dim, uint32_t scramble)
+	{
+		uint32_t r = scramble;
+
+		for (int i = dim * SobolMatricesSize; index != 0; index >>= 1, i++)
+		{
+			if (index & 1) r ^= SobolMatrices[i];
+		}
+		return r;
+	}
+
 	std::shared_ptr<BufferTexture> genHaltonSeqTexture(int nSamples, int nDim)
 	{
 		auto ret = std::make_shared<BufferTexture>();
@@ -35,80 +46,26 @@ namespace Sampler
 		delete[] samples;
 		return ret;
 	}
+
 	std::shared_ptr<BufferTexture> genSobolSeqTexture(int nSamples, int nDim)
 	{
 		auto ret = std::make_shared<BufferTexture>();
 		size_t size = nSamples * nDim;
-		float* samples = new float[size];
+		uint32_t* samples = new uint32_t[size];
 
-		uint32_t L = (uint32_t)std::ceil(std::log((double)nSamples) / std::log(2.0));
-
-		uint32_t* C = new uint32_t[nSamples];
-		for (uint32_t i = 0; i < nSamples; i++)
+		for (int i = 0; i < nSamples; i++)
 		{
-			C[i] = 0;
-			uint32_t value = i;
-			while (value & 1)
+			for (int j = 0; j < nDim; j++)
 			{
-				value >>= 1;
-				C[i]++;
+				samples[i * nDim + j] = sobolSample(i, j);
 			}
 		}
-
-		for (uint32_t j = 0; j < nDim; j++) samples[0 * nDim + j] = 0.0;
-
-		uint32_t* V = new uint32_t[L];
-		for (uint32_t i = 0; i < L; i++) V[i] = 1 << (31 - i);
-
-		uint32_t* X = new uint32_t[nSamples];
-		X[0] = 0;
-		for (uint32_t i = 1; i < nSamples; i++)
-		{
-			X[i] = X[i - 1] ^ V[C[i - 1]];
-			samples[i * nDim + 0] = (float)X[i] / std::pow(2.0, 32);
-		}
-
-		for (uint32_t j = 1; j < nDim; j++)
-		{
-			auto [a, m] = SOBOL_MATRICES[j - 1];
-			uint32_t s = m.size();
-
-			// Compute direction numbers V[1] to V[L], scaled by pow(2,32)
-			if (L <= s)
-			{
-				for (uint32_t i = 0; i < L; i++) V[i] = m[i] << (31 - i);
-			}
-			else
-			{
-				for (uint32_t i = 0; i < s; i++) V[i] = m[i] << (31 - i);
-
-				for (uint32_t i = s; i < L; i++)
-				{
-					V[i] = V[i - s] ^ (V[i - s] >> s);
-
-					for (uint32_t k = 1; k < s; k++)
-					{
-						V[i] ^= (((a >> (s - 1 - k)) & 1) * V[i - k]);
-					}
-				}
-			}
-
-			X[0] = 0;
-			for (uint32_t i = 1; i < nSamples; i++)
-			{
-				X[i] = X[i - 1] ^ V[C[i - 1]];
-				samples[i * nDim + j] = (float)X[i] / std::pow(2.0, 32);
-			}
-		}
-		delete[] V;
-		delete[] X;
-		delete[] C;
-
-		ret->allocate(size * sizeof(float), samples, GL_R32F);
+		ret->allocate(size * sizeof(uint32_t), samples, GL_R32UI);
 
 		delete[] samples;
 		return ret;
 	}
+
 	std::shared_ptr<Texture> genNoiseTexture(int width, int height)
 	{
 		auto ret = std::make_shared<Texture>();

@@ -153,6 +153,13 @@ void Shader::resetTextureMap()
 	m_TextureMap.clear();
 }
 
+void Shader::setComputeShaderSizeHint(int x, int y, int z)
+{
+	computeGroupSize[0] = x;
+	computeGroupSize[1] = y;
+	computeGroupSize[2] = z;
+}
+
 void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat stat, std::map<std::string, bool>& inclRec)
 {
 	std::string line;
@@ -170,21 +177,29 @@ void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat sta
 				{
 					if (stat == ShaderLoadStat::Vertex) throw "redefinition";
 					stat = ShaderLoadStat::Vertex;
+					text.vertex += "\n#version 450\n";
 				}
 				else if (arg == "fragment")
 				{
 					if (stat == ShaderLoadStat::Fragment) throw "redefinition";
 					stat = ShaderLoadStat::Fragment;
+					text.fragment += "\n#version 450\n";
 				}
 				else if (arg == "geometry")
 				{
 					if (stat == ShaderLoadStat::Geometry) throw "redefinition";
+					text.geometry += "\n#version 450\n";
 				}
 				else if (arg == "compute")
 				{
 					if (stat == ShaderLoadStat::Compute) throw "redefinition";
 					stat = ShaderLoadStat::Compute;
 					m_Type = ShaderType::Compute;
+					text.compute += "\n#version 450\nlayout(local_size_x = " +
+						std::to_string(computeGroupSize[0]) +
+						", local_size_y = " + std::to_string(computeGroupSize[1]) +
+						", local_size_z = " + std::to_string(computeGroupSize[2]) +
+						") in;\n";
 				}
 				else if (arg != "lib") throw "included file is not a lib";
 				continue;

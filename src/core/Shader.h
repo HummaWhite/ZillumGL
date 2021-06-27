@@ -86,4 +86,6 @@ private:
 	ShaderType m_Type;
 
 	std::map<std::string, int> m_TextureMap;
+
+	int computeGroupSize[3];
 };

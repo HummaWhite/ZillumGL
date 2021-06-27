@@ -29,19 +29,20 @@ void RayTest::init()
 	screenVB.allocate(sizeof(SCREEN_COORD), SCREEN_COORD, 6);
 	screenVA.addBuffer(screenVB, LAYOUT_POS2);
 
+	rayTestShader.setComputeShaderSizeHint(workgroupSizeX, workgroupSizeY, 1);
 	rayTestShader.load("compute.shader");
 	postShader.load("postEffects.shader");
 
 	frameTex.generate2D(this->windowWidth(), this->windowHeight(), GL_RGBA32F);
 	frameTex.setFilterAndWrapping(GL_LINEAR, GL_CLAMP_TO_EDGE);
+	glBindImageTexture(0, frameTex.ID(), 0, false, 0, GL_READ_WRITE, GL_RGBA32F);
+	postShader.setTexture("frameBuffer", frameTex, 0);
 
 	scene.envMap = std::make_shared<EnvironmentMap>();
 	scene.envMap->load("res/texture/none.png");
-	camera.setFOV(90.0f);
-	camera.setPos({ 0.0f, -15.0f, 4.2f });
+	camera.setFOV(40.0f);
+	camera.setPos({ 0.0f, -3.7f, 1.0f });
 	camera.setAspect((float)this->windowWidth() / this->windowHeight());
-
-	scene.addObject(std::make_shared<Model>("res/model/Demos/MIS.obj", glm::vec3(0.0f), glm::vec3(1.0f)), 0);
 
 	sceneBuffers = scene.genBuffers();
 
@@ -49,7 +50,6 @@ void RayTest::init()
 	vertexCount = sceneBuffers.vertex->size() / sizeof(glm::vec3);
 	triangleCount = sceneBuffers.index->size() / sizeof(uint32_t) / 3;
 
-	//haltonTex = Sampler::genHaltonSeqTexture(sampleNum, sampleDim);
 	sobolTex = Sampler::genSobolSeqTexture(sampleNum, sampleDim);
 	noiseTex = Sampler::genNoiseTexture(this->windowWidth(), this->windowHeight());
 
@@ -68,7 +68,6 @@ void RayTest::init()
 	rayTestShader.setTexture("lightPower", *sceneBuffers.lightPower, 12);
 	rayTestShader.setTexture("lightAlias", *sceneBuffers.lightAlias, 13);
 	rayTestShader.setTexture("lightProb", *sceneBuffers.lightProb, 14);
-	//rayTestShader.setTexture("haltonSeq", *haltonTex, 15);
 	rayTestShader.setTexture("sobolSeq", *sobolTex, 15);
 	rayTestShader.setTexture("noiseTex", *noiseTex, 16);
 	rayTestShader.set1i("nLights", scene.nLights);
@@ -96,11 +95,7 @@ void RayTest::renderLoop()
 	this->renderFrame();
 	freeCounter++;
 
-	if (curSpp < maxSpp || !limitSpp)
-	{
-		curSpp++;
-		curFrame ^= 1;
-	}
+	if (curSpp < maxSpp || !limitSpp) curSpp++;
 
 	this->renderGUI();
 
@@ -182,19 +177,18 @@ void RayTest::renderFrame()
 	rayTestShader.set1i("spp", curSpp);
 	rayTestShader.set1i("freeCounter", freeCounter);
 
-	const int xSize = 48, ySize = 32;
-	int xNum = (this->windowWidth() + xSize - 1) / xSize;
-	int yNum = (this->windowHeight() + ySize - 1) / ySize;
+	if (curSpp < maxSpp || !limitSpp)
+	{
+		int xNum = (this->windowWidth() + workgroupSizeX - 1) / workgroupSizeX;
+		int yNum = (this->windowHeight() + workgroupSizeY - 1) / workgroupSizeY;
 
-	glBindImageTexture(0, frameTex.ID(), 0, false, 0, GL_READ_WRITE, GL_RGBA32F);
-
-	rayTestShader.enable();
-
-	glDispatchCompute(xNum, yNum, 1);
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		rayTestShader.enable();
+		glDispatchCompute(xNum, yNum, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	}
 
 	renderer.clear(0.0f, 0.0f, 0.0f);
-	postShader.setTexture("frameBuffer", frameTex, 0);
+	
 	this->setViewport(0, 0, this->windowWidth(), this->windowHeight());
 	renderer.draw(screenVA, postShader);
 }

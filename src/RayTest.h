@@ -80,4 +80,7 @@ private:
 	std::shared_ptr<BufferTexture> haltonTex;
 	std::shared_ptr<BufferTexture> sobolTex;
 	std::shared_ptr<Texture> noiseTex;
+
+	int workgroupSizeX = 32;
+	int workgroupSizeY = 48;
 };
