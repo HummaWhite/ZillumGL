@@ -4,9 +4,9 @@
 
 CPU版本 | CPU version: https://github.com/HummaWhite/Zillum
 
-![](https://raw.githubusercontent.com/HummaWhite/ZillumGL/main/pic/save1623561396.png)
+![](https://raw.githubusercontent.com/HummaWhite/ZillumGL/main/pic/save1625201466.png)
 
-![](https://raw.githubusercontent.com/HummaWhite/ZillumGL/main/pic/save1623745916.png)
+![](https://raw.githubusercontent.com/HummaWhite/ZillumGL/main/pic/save1623561396.png)
 
 ![](https://raw.githubusercontent.com/HummaWhite/ZillumGL/main/pic/save1615882448.png)
 
