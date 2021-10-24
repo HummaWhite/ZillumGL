@@ -6,10 +6,13 @@ uniform samplerBuffer normals;
 uniform samplerBuffer texCoords;
 uniform isamplerBuffer indices;
 uniform samplerBuffer bounds;
-uniform isamplerBuffer matIndices;
+uniform isamplerBuffer matTexIndices;
 uniform isamplerBuffer hitTable;
 uniform int bvhSize;
 uniform int objPrimCount;
+uniform int nTextures;
+uniform sampler2DArray textures;
+uniform samplerBuffer texUVScale;
 
 struct Ray
 {

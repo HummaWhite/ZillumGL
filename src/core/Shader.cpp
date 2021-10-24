@@ -127,6 +127,12 @@ void Shader::setTexture(const char* name, const Texture& tex, uint32_t slot)
 	set1i(name, slot);
 }
 
+void Shader::setTexture(const char* name, TexturePtr tex, uint32_t slot)
+{
+	glBindTextureUnit(slot, tex->ID());
+	set1i(name, slot);
+}
+
 void Shader::setUniformBlock(const Buffer& buffer, int binding)
 {
 	glUniformBufferEXT(m_ID, binding, buffer.ID());
@@ -177,26 +183,26 @@ void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat sta
 				{
 					if (stat == ShaderLoadStat::Vertex) throw "redefinition";
 					stat = ShaderLoadStat::Vertex;
-					text.vertex += "\n#version 450\n";
+					text.vertex += "\n#version 450\n" + extensionStr;
 				}
 				else if (arg == "fragment")
 				{
 					if (stat == ShaderLoadStat::Fragment) throw "redefinition";
 					stat = ShaderLoadStat::Fragment;
-					text.fragment += "\n#version 450\n";
+					text.fragment += "\n#version 450\n" + extensionStr;
 				}
 				else if (arg == "geometry")
 				{
 					if (stat == ShaderLoadStat::Geometry) throw "redefinition";
-					text.geometry += "\n#version 450\n";
+					text.geometry += "\n#version 450\n" + extensionStr;
 				}
 				else if (arg == "compute")
 				{
 					if (stat == ShaderLoadStat::Compute) throw "redefinition";
 					stat = ShaderLoadStat::Compute;
 					m_Type = ShaderType::Compute;
-					text.compute += "\n#version 450\nlayout(local_size_x = " +
-						std::to_string(computeGroupSize[0]) +
+					text.compute += "\n#version 450\n" + extensionStr +
+						"layout(local_size_x = " + std::to_string(computeGroupSize[0]) +
 						", local_size_y = " + std::to_string(computeGroupSize[1]) +
 						", local_size_z = " + std::to_string(computeGroupSize[2]) +
 						") in;\n";

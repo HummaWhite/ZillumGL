@@ -77,9 +77,9 @@ private:
 	const int sampleNum = 131072;
 	const int sampleDim = 256;
 	int sampler = 0;
-	std::shared_ptr<BufferTexture> haltonTex;
-	std::shared_ptr<BufferTexture> sobolTex;
-	std::shared_ptr<Texture> noiseTex;
+	BufferTexturePtr haltonTex;
+	BufferTexturePtr sobolTex;
+	TexturePtr noiseTex;
 
 	int workgroupSizeX = 32;
 	int workgroupSizeY = 48;

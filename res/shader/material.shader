@@ -10,6 +10,7 @@ const uint Invalid = 1 << 16;
 
 const uint MetalWorkflow = 0;
 const uint Dielectric = 1;
+const uint ThinDielectric = 2;
 
 uniform samplerBuffer materials;
 uniform isamplerBuffer matTypes;
@@ -19,20 +20,22 @@ struct BsdfSample
 	vec3 Wi;
 	float pdf;
 	vec3 bsdf;
+	float eta;
 	uint flag;
 };
 
-BsdfSample bsdfSample(vec3 Wi, float pdf, vec3 bsdf, uint flag)
+BsdfSample bsdfSample(vec3 Wi, float pdf, vec3 bsdf, float eta, uint flag)
 {
 	BsdfSample samp;
 	samp.Wi = Wi;
 	samp.pdf = pdf;
 	samp.bsdf = bsdf;
+	samp.eta = eta;
 	samp.flag = flag;
 	return samp;
 }
 
-const BsdfSample INVALID_SAMPLE = bsdfSample(vec3(0), 0, vec3(0), Invalid);
+const BsdfSample INVALID_SAMPLE = bsdfSample(vec3(0), 0, vec3(0), 0, Invalid);
 
 bool approximateDelta(float roughness)
 {
@@ -180,7 +183,7 @@ BsdfSample metalWorkflowGetSample(vec3 N, vec3 Wo, vec3 albedo, float metallic, 
 	vec3 bsdf = metalWorkflowBsdf(Wo, Wi, N, albedo, metallic, roughness);
 	float pdf = metalWorkflowPdf(Wo, Wi, N, metallic, alpha);
 
-	return bsdfSample(Wi, pdf, bsdf, type);
+	return bsdfSample(Wi, pdf, bsdf, 1.0, type);
 }
 
 bool refract(out vec3 Wt, vec3 Wi, vec3 N, float eta)
@@ -242,8 +245,12 @@ vec3 dielectricBsdf(vec3 Wo, vec3 Wi, vec3 N, vec3 tint, float ior, float roughn
 
 		denom *= absDot(N, Wi) * absDot(N, Wo);
 		float refl = fresnelDielectric(dot(H, Wi), eta);
+		float factor = square(1.0 / eta);
+		factor = 1.0;
 
-		return (denom < 1e-7) ? vec3(0.0) : tint * abs(ggxD(N, H, alpha) * smithG(N, Wo, Wi, alpha) * HoWo * HoWi) / denom * (1.0 - refl);
+		return (denom < 1e-7) ?
+			vec3(0.0) :
+			tint * abs(ggxD(N, H, alpha) * smithG(N, Wo, Wi, alpha) * HoWo * HoWi) / denom * (1.0 - refl) * factor;
 	}
 }
 
@@ -280,15 +287,18 @@ BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roug
 		if (u < refl)
 		{
 			vec3 Wi = reflect(-Wo, N);
-			return bsdfSample(Wi, 1.0, tint, SpecRefl);
+			return bsdfSample(Wi, 1.0, tint, 1.0, SpecRefl);
 		}
 		else
 		{
 			vec3 Wi;
 			bool refr = refract(Wi, Wo, N, ior);
 			if (!refr) return INVALID_SAMPLE;
+			if (dot(N, Wo) < 0) ior = 1.0 / ior;
+			float factor = square(1.0 / ior);
+			factor = 1.0;
 
-			return bsdfSample(Wi, 1.0, tint, SpecTrans);
+			return bsdfSample(Wi, 1.0, tint * factor, ior, SpecTrans);
 		}
 	}
 	else
@@ -313,7 +323,7 @@ BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roug
 				(4.0 * HoWo * HoWi);
 
 			if (isnan(p)) p = 0.0;
-			return bsdfSample(Wi, p, r, GlosRefl);
+			return bsdfSample(Wi, p, r, 1.0, GlosRefl);
 		}
 		else
 		{
@@ -330,6 +340,8 @@ BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roug
 			float sqrtDenom = dot(H, Wo) + ior * dot(H, Wi);
 			float denom = sqrtDenom * sqrtDenom;
 			float dHdWi = HoWi / denom;
+			float factor = square(1.0 / ior);
+			factor = 1.0;
 
 			denom *= absDot(N, Wi) * absDot(N, Wo);
 
@@ -340,7 +352,26 @@ BsdfSample dielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roug
 			float p = ggxPdfWm(N, H, Wo, alpha) * dHdWi;
 
 			if (isnan(p)) p = 0.0;
-			return bsdfSample(Wi, p, t, GlosTrans);
+			return bsdfSample(Wi, p, t * factor, ior, GlosTrans);
 		}
 	}
+}
+
+BsdfSample thinDielectricGetSample(vec3 N, vec3 Wo, vec3 tint, float ior, float u, vec2 u2)
+{
+	if (dot(N, Wo) < 0) N = -N;
+	float refl = fresnelDielectric(dot(N, Wo), ior);
+	float trans = 1.0 - refl;
+	if (refl < 1.0)
+	{
+		refl += trans * trans * refl / (1.0 - refl * refl);
+		trans = 1.0 - refl;
+	}
+
+	if (u < refl)
+	{
+		vec3 Wi = reflect(-Wo, N);
+		return bsdfSample(Wi, 1.0, tint, 1.0, SpecRefl);
+	}
+	return bsdfSample(-Wo, 1.0, tint, 1.0, SpecTrans);
 }

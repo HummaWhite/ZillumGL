@@ -12,6 +12,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "Texture.h"
+#include "Resource.h"
 
 struct Material
 {
@@ -37,7 +38,7 @@ struct Mesh
 	std::vector<glm::vec3> normals;
 	std::vector<glm::vec2> texCoords;
 	std::vector<uint32_t> indices;
-	uint32_t matIndex;
+	uint32_t matTexIndex;
 };
 
 class Model
@@ -70,7 +71,7 @@ public:
 
 private:
 	void processNode(aiNode* node, const aiScene* scene);
-	Mesh processMesh(aiMesh* mesh);
+	Mesh processMesh(aiMesh* mesh, const aiScene* scene);
 
 private:
 	std::vector<Mesh> m_Meshes;

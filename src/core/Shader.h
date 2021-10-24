@@ -47,6 +47,7 @@ public:
 
 	void setTexture(const char* name, const Texture& tex);
 	void setTexture(const char* name, const Texture& tex, uint32_t slot);
+	void setTexture(const char* name, TexturePtr tex, uint32_t slot);
 
 	void setUniformBlock(const Buffer& buffer, int binding);
 
@@ -59,6 +60,7 @@ public:
 	void resetTextureMap();
 
 	void setComputeShaderSizeHint(int x, int y, int z);
+	void setExtension(const std::string& ext) { extensionStr = ext; }
 
 private:
 	enum class ShaderLoadStat
@@ -87,5 +89,6 @@ private:
 
 	std::map<std::string, int> m_TextureMap;
 
+	std::string extensionStr;
 	int computeGroupSize[3];
 };

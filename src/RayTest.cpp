@@ -26,9 +26,32 @@ RayTest::~RayTest()
 
 void RayTest::init()
 {
+	int work_grp_cnt[3];
+
+	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0, &work_grp_cnt[0]);
+	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 1, &work_grp_cnt[1]);
+	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 2, &work_grp_cnt[2]);
+
+	printf("max global (total) work group counts x:%i y:%i z:%i\n",
+		work_grp_cnt[0], work_grp_cnt[1], work_grp_cnt[2]);
+
+	int work_grp_size[3];
+
+	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0, &work_grp_size[0]);
+	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1, &work_grp_size[1]);
+	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2, &work_grp_size[2]);
+
+	printf("max local (in one shader) work group sizes x:%i y:%i z:%i\n",
+		work_grp_size[0], work_grp_size[1], work_grp_size[2]);
+
+	int work_grp_inv;
+	glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &work_grp_inv);
+	printf("max local work group invocations %i\n", work_grp_inv);
+
 	screenVB.allocate(sizeof(SCREEN_COORD), SCREEN_COORD, 6);
 	screenVA.addBuffer(screenVB, LAYOUT_POS2);
 
+	rayTestShader.setExtension("#extension GL_EXT_texture_array : enable\n");
 	rayTestShader.setComputeShaderSizeHint(workgroupSizeX, workgroupSizeY, 1);
 	rayTestShader.load("compute.shader");
 	postShader.load("postEffects.shader");
@@ -40,8 +63,11 @@ void RayTest::init()
 
 	scene.envMap = std::make_shared<EnvironmentMap>();
 	scene.envMap->load("res/texture/none.png");
-	camera.setFOV(40.0f);
+	camera.setFOV(50.0f);
+	//camera.setPos({ 1.583f, -4.044f, 4.9f });
 	camera.setPos({ 0.0f, -3.7f, 1.0f });
+	//camera.setPos({ 0.0f, -15.0f, 4.2f });
+	//camera.lookAt({ 0.0f, 0.0f, 0.0f });
 	camera.setAspect((float)this->windowWidth() / this->windowHeight());
 
 	sceneBuffers = scene.genBuffers();
@@ -50,26 +76,30 @@ void RayTest::init()
 	vertexCount = sceneBuffers.vertex->size() / sizeof(glm::vec3);
 	triangleCount = sceneBuffers.index->size() / sizeof(uint32_t) / 3;
 
+	//haltonTex = Sampler::genHaltonSeqTexture(sampleNum, sampleDim);
 	sobolTex = Sampler::genSobolSeqTexture(sampleNum, sampleDim);
 	noiseTex = Sampler::genNoiseTexture(this->windowWidth(), this->windowHeight());
 
-	rayTestShader.setTexture("vertices", *sceneBuffers.vertex, 1);
-	rayTestShader.setTexture("normals", *sceneBuffers.normal, 2);
-	rayTestShader.setTexture("texCoords", *sceneBuffers.texCoord, 3);
-	rayTestShader.setTexture("indices", *sceneBuffers.index, 4);
-	rayTestShader.setTexture("bounds", *sceneBuffers.bound, 5);
-	rayTestShader.setTexture("hitTable", *sceneBuffers.hitTable, 6);
-	rayTestShader.setTexture("matIndices", *sceneBuffers.matIndex, 7);
+	rayTestShader.setTexture("vertices", sceneBuffers.vertex, 1);
+	rayTestShader.setTexture("normals", sceneBuffers.normal, 2);
+	rayTestShader.setTexture("texCoords", sceneBuffers.texCoord, 3);
+	rayTestShader.setTexture("indices", sceneBuffers.index, 4);
+	rayTestShader.setTexture("bounds", sceneBuffers.bound, 5);
+	rayTestShader.setTexture("hitTable", sceneBuffers.hitTable, 6);
+	rayTestShader.setTexture("matTexIndices", sceneBuffers.matTexIndex, 7);
 	rayTestShader.setTexture("envMap", scene.envMap->getEnvMap(), 8);
 	rayTestShader.setTexture("envAliasTable", scene.envMap->getAliasTable(), 9);
 	rayTestShader.setTexture("envAliasProb", scene.envMap->getAliasProb(), 10);
-	rayTestShader.setTexture("materials", *sceneBuffers.material, 11);
-	rayTestShader.setTexture("matTypes", *sceneBuffers.material, 11);
-	rayTestShader.setTexture("lightPower", *sceneBuffers.lightPower, 12);
-	rayTestShader.setTexture("lightAlias", *sceneBuffers.lightAlias, 13);
-	rayTestShader.setTexture("lightProb", *sceneBuffers.lightProb, 14);
-	rayTestShader.setTexture("sobolSeq", *sobolTex, 15);
-	rayTestShader.setTexture("noiseTex", *noiseTex, 16);
+	rayTestShader.setTexture("materials", sceneBuffers.material, 11);
+	rayTestShader.setTexture("matTypes", sceneBuffers.material, 11);
+	rayTestShader.setTexture("lightPower", sceneBuffers.lightPower, 12);
+	rayTestShader.setTexture("lightAlias", sceneBuffers.lightAlias, 13);
+	rayTestShader.setTexture("lightProb", sceneBuffers.lightProb, 14);
+	rayTestShader.setTexture("textures", sceneBuffers.textures, 15);
+	rayTestShader.setTexture("texUVScale", sceneBuffers.texUVScale, 16);
+	//rayTestShader.setTexture("haltonSeq", *haltonTex, 15);
+	rayTestShader.setTexture("sobolSeq", sobolTex, 17);
+	rayTestShader.setTexture("noiseTex", noiseTex, 18);
 	rayTestShader.set1i("nLights", scene.nLights);
 	rayTestShader.set1f("lightSum", scene.lightSum);
 	rayTestShader.set1f("envSum", scene.envMap->sum());
@@ -166,6 +196,9 @@ void RayTest::processCursor(float posX, float posY)
 
 void RayTest::processScroll(float offsetX, float offsetY)
 {
+	if (!cursorDisabled) return;
+	camera.changeFOV(offsetY);
+	reset();
 }
 
 void RayTest::processResize(int width, int height)
@@ -264,7 +297,8 @@ void RayTest::renderGUI()
 		{
 			ImGui::SliderInt("Material", &materialIndex, 0, scene.materials.size() - 1);
 			auto& m = scene.materials[materialIndex];
-			if (ImGui::SliderInt("Type", &m.type, 0, 1) ||
+			const char* matTypes[] = { "MetalWorkflow", "Dielectric", "ThinDielectric" };
+			if (ImGui::Combo("Type", &m.type, matTypes, IM_ARRAYSIZE(matTypes)) ||
 				ImGui::ColorEdit3("Albedo", glm::value_ptr(m.albedo)) ||
 				ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
 			{	
@@ -324,6 +358,8 @@ void RayTest::renderGUI()
 		}
 
 		ImGui::Checkbox("Vertical Sync", &verticalSync);
+		auto f = camera.front();
+		ImGui::Text("Dir x: %f, y: %f, z: %f\n", f.x, f.y, f.z);
 		if (ImGui::DragFloat3("Position", (float*)&camera, 0.1f)) reset();
 		if (ImGui::SliderFloat("FOV", (float*)&camera + 15, 0.0f, 90.0f)) reset();
 		if (ImGui::DragFloat("FocalDistance", &focalDist, 0.01f, 0.004f, 100.0f)) reset();

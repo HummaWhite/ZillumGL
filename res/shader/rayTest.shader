@@ -38,6 +38,7 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 {
 	vec3 result = vec3(0.0);
 	vec3 beta = vec3(1.0);
+	float etaScale = 1.0;
 
 	for (int bounce = 0; bounce < maxBounce; bounce++)
 	{
@@ -45,22 +46,37 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 		vec3 Wo = -ray.dir;
 		vec3 N = surfaceInfo.norm;
 
-		//if (dot(N, Wo) < 0) N = -N;
-
-		int matId = texelFetch(matIndices, id).r;
-		vec3 albedo = texelFetch(materials, matId * 2).rgb;
+		if (dot(N, Wo) < 0) N = -N;
+		// [
+		int matTexId = texelFetch(matTexIndices, id).r;
+		int matId = matTexId & 0x0000ffff;
+		int texId = matTexId >> 16;
+		//return (N + 1.0) * 0.5;
+		// [albedo     metallic/IOR     roughness     type]
+		//   vec3        float           float        uint
+		vec3 albedo;
+		if (texId == 0xffff)
+			albedo = texelFetch(materials, matId * 2).rgb;
+		else
+		{
+			vec2 uvScale = texelFetch(texUVScale, texId).xy;
+			albedo = texture2DArray(textures, vec3(fract(surfaceInfo.texCoord) * uvScale, texId)).rgb;
+		}
 		vec2 tmp = texelFetch(materials, matId * 2 + 1).rg;
 		float metIor = tmp.r;
 		float roughness = mix(0.0132, 1.0, tmp.g);
-		int type = texelFetch(matTypes, matId * 2 + 1).b;
+		uint type = texelFetch(matTypes, matId * 2 + 1).b;
 
 		if (sampleLight)
 		{
+			float ud = sample1D(s);
+			vec4 us = sample4D(s);
+
 			if (type == Dielectric)
 			{
 				if (!approximateDelta(roughness))
 				{
-					LightSample samp = sampleLightAndEnv(P, s);
+					LightSample samp = sampleLightAndEnv(P, ud, us);
 					if (samp.pdf > 0.0)
 					{
 						float bsdfPdf = dielectricPdf(Wo, samp.Wi, N, metIor, roughness);
@@ -69,9 +85,9 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 					}
 				}
 			}
-			else
+			else if (type == MetalWorkflow)
 			{
-				LightSample samp = sampleLightAndEnv(P, s);
+				LightSample samp = sampleLightAndEnv(P, ud, us);
 				if (samp.pdf > 0.0)
 				{
 					float bsdfPdf = metalWorkflowPdf(Wo, samp.Wi, N, metIor, roughness * roughness);
@@ -83,9 +99,19 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 
 		float uf = sample1D(s);
 		vec2 u = sample2D(s);
-		BsdfSample samp = (type == MetalWorkflow) ?
-			metalWorkflowGetSample(N, Wo, albedo, metIor, roughness, uf, u) :
-			dielectricGetSample(N, Wo, albedo, metIor, roughness, uf, u);
+		BsdfSample samp;
+		switch (type)
+		{
+		case MetalWorkflow:
+			samp = metalWorkflowGetSample(N, Wo, albedo, metIor, roughness, uf, u);
+			break;
+		case Dielectric:
+			samp = dielectricGetSample(N, Wo, albedo, metIor, roughness, uf, u);
+			break;
+		case ThinDielectric:
+			samp = thinDielectricGetSample(N, Wo, albedo, metIor, uf, u);
+			break;
+		}
 
 		vec3 Wi = samp.Wi;
 		float bsdfPdf = samp.pdf;
@@ -139,11 +165,15 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 			break;
 		}
 
-		float rr = rouletteProb * max(beta.x, max(beta.y, beta.z));
-		if (roulette)
+		if (flag == SpecTrans || flag == GlosTrans)
+			etaScale *= square(samp.eta);
+
+		float rr = rouletteProb * max(beta.x, max(beta.y, beta.z)) * etaScale;
+		if (roulette && rr < 1.0)
 		{
-			if (sample1D(s) > rr) break;
-			if (rr < 1.0) beta /= rr;
+			if (sample1D(s) > rr)
+				break;
+			beta /= rr;
 		}
 
 		surfaceInfo = triangleSurfaceInfo(primId, hitPoint);
@@ -179,7 +209,7 @@ vec3 traceAO(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 Ray sampleLensCamera(vec2 uv, inout Sampler s)
 {
 	vec2 texelSize = 1.0 / vec2(frameSize);
-	vec2 biasedCoord = uv+ texelSize * sample2D(s);
+	vec2 biasedCoord = uv + texelSize * sample2D(s);
 	vec2 ndc = biasedCoord * 2.0 - 1.0;
 
 	vec3 pLens = vec3(toConcentricDisk(sample2D(s)) * lensRadius, 0.0);
@@ -204,7 +234,7 @@ vec3 getResult(Ray ray, inout Sampler s)
 
 	if (showBVH)
 	{
-		int matId = texelFetch(matIndices, primId).r;
+		int matId = texelFetch(matTexIndices, primId).r & 0xffff;
 		if (matId == matIndex && primId != -1) result = vec3(1.0, 1.0, 0.2);
 		else result = vec3(maxDepth / bvhDepth * 0.2);
 	}

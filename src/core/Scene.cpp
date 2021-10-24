@@ -1,11 +1,5 @@
 #include "Scene.h"
 
-template<typename T>
-size_t vectorByteSize(const std::vector<T>& v)
-{
-	return v.size() * sizeof(T);
-}
-
 SceneBuffer Scene::genBuffers()
 {
 	auto vertexBuf = std::make_shared<BufferTexture>();
@@ -14,17 +8,18 @@ SceneBuffer Scene::genBuffers()
 	auto indexBuf = std::make_shared<BufferTexture>();
 	auto boundBuf = std::make_shared<BufferTexture>();
 	auto hitTableBuf = std::make_shared<BufferTexture>();
-	auto matIndexBuf = std::make_shared<BufferTexture>();
+	auto matTexIndexBuf = std::make_shared<BufferTexture>();
 	auto materialBuf = std::make_shared<BufferTexture>();
 	auto lightPowerBuf = std::make_shared<BufferTexture>();
 	auto lightAliasBuf = std::make_shared<BufferTexture>();
 	auto lightProbBuf = std::make_shared<BufferTexture>();
+	auto uvScaleBuf = std::make_shared<BufferTexture>();
 
 	std::vector<glm::vec3> vertices;
 	std::vector<glm::vec3> normals;
 	std::vector<glm::vec2> texCoords;
 	std::vector<uint32_t> indices;
-	std::vector<uint32_t> matIndices;
+	std::vector<uint32_t> matTexIndices;
 
 	uint32_t offIndVertex = 0;
 	uint32_t offIndMaterial = 0;
@@ -42,14 +37,14 @@ SceneBuffer Scene::genBuffers()
 			std::transform(m.indices.begin(), m.indices.end(), transIndices.begin(),
 				[offIndVertex](uint32_t x) { return (x + offIndVertex); }
 			);
-
-			std::vector<uint32_t> meshMat(m.indices.size() / 3, m.matIndex + offIndMaterial);
+			//std::cout << (m.matTexIndex >> 16) << " " << (m.matTexIndex & 0xffff) + offIndMaterial << "\n";
+			std::vector<uint32_t> meshMat(m.indices.size() / 3, m.matTexIndex + offIndMaterial);
 
 			vertices.insert(vertices.end(), m.vertices.begin(), m.vertices.end());
 			normals.insert(normals.end(), m.normals.begin(), m.normals.end());
 			texCoords.insert(texCoords.end(), m.texCoords.begin(), m.texCoords.end());
 			indices.insert(indices.end(), transIndices.begin(), transIndices.end());
-			matIndices.insert(matIndices.end(), meshMat.begin(), meshMat.end());
+			matTexIndices.insert(matTexIndices.end(), meshMat.begin(), meshMat.end());
 
 			offIndVertex += m.vertices.size();
 			objPrimCount += m.indices.size() / 3;
@@ -83,20 +78,24 @@ SceneBuffer Scene::genBuffers()
 
 	auto [lightPower, lightAlias, lightProb] = genLightTable();
 
-	vertexBuf->allocate(vectorByteSize(vertices), vertices.data(), GL_RGB32F);
-	normalBuf->allocate(vectorByteSize(normals), normals.data(), GL_RGB32F);
-	texCoordBuf->allocate(vectorByteSize(texCoords), texCoords.data(), GL_RG32F);
-	indexBuf->allocate(vectorByteSize(indices), indices.data(), GL_R32I);
-	boundBuf->allocate(vectorByteSize(bvhBuf.bounds), bvhBuf.bounds.data(), GL_RGB32F);
-	hitTableBuf->allocate(vectorByteSize(bvhBuf.hitTable), bvhBuf.hitTable.data(), GL_RGB32I);
-	matIndexBuf->allocate(vectorByteSize(matIndices), matIndices.data(), GL_R32I);
-	materialBuf->allocate(vectorByteSize(materials), materials.data(), GL_RGB32F);
-	lightPowerBuf->allocate(vectorByteSize(lightPower), lightPower.data(), GL_RGB32F);
-	lightAliasBuf->allocate(vectorByteSize(lightAlias), lightAlias.data(), GL_R32I);
-	lightProbBuf->allocate(vectorByteSize(lightProb), lightProb.data(), GL_R32F);
+	vertexBuf->allocate(vertices, GL_RGB32F);
+	normalBuf->allocate(normals, GL_RGB32F);
+	texCoordBuf->allocate(texCoords, GL_RG32F);
+	indexBuf->allocate(indices, GL_R32I);
+	boundBuf->allocate(bvhBuf.bounds, GL_RGB32F);
+	hitTableBuf->allocate(bvhBuf.hitTable, GL_RGB32I);
+	matTexIndexBuf->allocate(matTexIndices, GL_R32I);
+	materialBuf->allocate(materials, GL_RGB32F);
+	lightPowerBuf->allocate(lightPower, GL_RGB32F);
+	lightAliasBuf->allocate(lightAlias, GL_R32I);
+	lightProbBuf->allocate(lightProb, GL_R32F);
+
+	auto [textures, uvScale] = Resource::createTextureBatch();
+	uvScaleBuf->allocate(uvScale, GL_RG32F);
 
 	return SceneBuffer{ vertexBuf, normalBuf, texCoordBuf, indexBuf, boundBuf,
-		hitTableBuf, matIndexBuf, materialBuf, lightPowerBuf, lightAliasBuf, lightProbBuf };
+		hitTableBuf, matTexIndexBuf, materialBuf, lightPowerBuf, lightAliasBuf, lightProbBuf,
+		textures, uvScaleBuf };
 }
 
 void Scene::addObject(std::shared_ptr<Model> object, uint8_t matIndex)

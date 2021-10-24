@@ -28,11 +28,10 @@ float lightPdfLi(int id, vec3 x, vec3 y)
 	return distSquare(x, y) / (triangleArea(triId) * cosTheta);
 }
 
-LightSample lightSampleOne(vec3 x, inout Sampler s)
+LightSample lightSampleOne(vec3 x, vec4 u)
 {
 	LightSample ret;
 
-	vec2 u = sample2D(s);
 	int cx = int(float(nLights) * u.x);
 	float cy = u.y;
 
@@ -47,7 +46,7 @@ LightSample lightSampleOne(vec3 x, inout Sampler s)
 	vec3 b = texelFetch(vertices, ib).xyz;
 	vec3 c = texelFetch(vertices, ic).xyz;
 
-	vec3 y = sampleTriangleUniform(a, b, c, sample2D(s));
+	vec3 y = sampleTriangleUniform(a, b, c, u.zw);
 	vec3 Wi = normalize(y - x);
 	vec3 N = triangleSurfaceInfo(triId, y).norm;
 	float cosTheta = dot(N, -Wi);
@@ -70,7 +69,7 @@ LightSample lightSampleOne(vec3 x, inout Sampler s)
 	return lightSample(Wi, weight / pdf, pdf);
 }
 
-LightSample sampleLightAndEnv(vec3 x, inout Sampler s)
+LightSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
 {
 	float pdfSampleLight = 0.0;
 
@@ -79,10 +78,10 @@ LightSample sampleLightAndEnv(vec3 x, inout Sampler s)
 		pdfSampleLight = lightEnvUniformSample ? 0.5f : lightSum / (lightSum + envSum);
 	}
 
-	bool sampleLight = sample1D(s) < pdfSampleLight;
+	bool sampleLight = ud < pdfSampleLight;
 	float pdfSelect = sampleLight ? pdfSampleLight : 1.0 - pdfSampleLight;
 
-	LightSample samp = sampleLight ? lightSampleOne(x, s) : envImportanceSample(x, s);
+	LightSample samp = sampleLight ? lightSampleOne(x, us) : envImportanceSample(x, us);
 	samp.coef /= pdfSelect;
 	samp.pdf *= pdfSelect;
 	return samp;

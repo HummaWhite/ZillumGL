@@ -10,6 +10,11 @@ Texture::~Texture()
 	glDeleteTextures(1, &m_ID);
 }
 
+void Texture::create(GLenum type)
+{
+	glCreateTextures(type, 1, &m_ID);
+}
+
 void Texture::generate2D(int width, int height, GLuint internalFormat)
 {
 	glCreateTextures(GL_TEXTURE_2D, 1, &m_ID);

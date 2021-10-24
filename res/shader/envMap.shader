@@ -45,21 +45,19 @@ float envPdfLi(vec3 Wi)
 	return envGetPortion(Wi) * size.x * size.y * 0.5f * square(PiInv);// / sqrt(1.0 - square(Wi.z));
 }
 
-vec4 envImportanceSample(inout Sampler s)
+vec4 envImportanceSample(vec4 u)
 {
 	ivec2 size = textureSize(envMap, 0).xy;
 	int w = size.x, h = size.y;
 
-	vec2 u1 = sample2D(s);
-	int rx = int(float(h) * u1.x);
-	float ry = u1.y;
+	int rx = int(float(h) * u.x);
+	float ry = u.y;
 
 	ivec2 rTex = ivec2(w, rx);
 	int row = (ry < texelFetch(envAliasProb, rTex, 0).r) ? rx : texelFetch(envAliasTable, rTex, 0).r;
 
-	vec2 u2 = sample2D(s);
-	int cx = int(float(w) * u2.x);
-	float cy = u2.y;
+	int cx = int(float(w) * u.z);
+	float cy = u.w;
 
 	ivec2 cTex = ivec2(cx, row);
 	int col = (cy < texelFetch(envAliasProb, cTex, 0).r) ? cx : texelFetch(envAliasTable, cTex, 0).r;
@@ -73,9 +71,9 @@ vec4 envImportanceSample(inout Sampler s)
 	return vec4(Wi, pdf);
 }
 
-LightSample envImportanceSample(vec3 x, inout Sampler s)
+LightSample envImportanceSample(vec3 x, vec4 u)
 {
-	vec4 sp = envImportanceSample(s);
+	vec4 sp = envImportanceSample(u);
 	vec3 Wi = sp.xyz;
 	float pdf = sp.w;
 

@@ -1,5 +1,7 @@
 #include "Model.h"
 
+#include <filesystem>
+
 glm::mat4 Model::constRot = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
 Model::Model(const char* filePath, const glm::vec3& pos, const glm::vec3& scale, const glm::vec3& rotation) :
@@ -18,6 +20,7 @@ Model::~Model()
 
 bool Model::loadModel(const char* filePath)
 {
+	m_Name = std::string(filePath);
 	m_LoadedFromFile = true;
 	Assimp::Importer importer;
 	uint32_t option = aiProcess_Triangulate
@@ -28,13 +31,12 @@ bool Model::loadModel(const char* filePath)
 		| aiProcess_FindInstances
 		| aiProcess_JoinIdenticalVertices
 		| aiProcess_OptimizeMeshes
-		| aiProcess_GenUVCoords
 		//| aiProcess_ForceGenNormals
 		//| aiProcess_FindDegenerates
 		;
 	const aiScene* scene = importer.ReadFile(filePath, option);
 
-	std::cout << "[Model]\t\tLoading [" << filePath << "] ... ";
+	std::cout << "[Model]\t\tLoading [" << filePath << "] ...\n";
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
@@ -49,14 +51,17 @@ bool Model::loadModel(const char* filePath)
 			aiMaterial* mat = scene->mMaterials[i];
 			aiColor3D albedo;
 			mat->Get(AI_MATKEY_COLOR_DIFFUSE, albedo);
-			m_Materials.push_back(Material(*(glm::vec3*) & albedo));
+			m_Materials.push_back(Material(*(glm::vec3*)&albedo));
+			//aiString texPath;
+			//mat->Get(AI_MATKEY_TEXTURE_DIFFUSE, tex);
+			//mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath);
+			//if (texPath.length != 0) std::cout << texPath.C_Str() << "\n";
 		}
 	}
 
 	processNode(scene->mRootNode, scene);
 
 	std::cout << "  [" << m_Meshes.size() << " mesh(es)]" << std::endl;
-	m_Name = std::string(filePath);
 	return true;
 }
 
@@ -127,7 +132,7 @@ void Model::processNode(aiNode* node, const aiScene* scene)
 	for (int i = 0; i < node->mNumMeshes; i++)
 	{
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		m_Meshes.push_back(processMesh(mesh));
+		m_Meshes.push_back(processMesh(mesh, scene));
 	}
 
 	for (int i = 0; i < node->mNumChildren; i++)
@@ -136,7 +141,7 @@ void Model::processNode(aiNode* node, const aiScene* scene)
 	}
 }
 
-Mesh Model::processMesh(aiMesh* mesh)
+Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene)
 {
 	std::vector<glm::vec3> vertices(mesh->mNumVertices);
 	std::vector<glm::vec3> normals(mesh->mNumVertices);
@@ -146,7 +151,8 @@ Mesh Model::processMesh(aiMesh* mesh)
 	for (int i = 0; i < mesh->mNumFaces; i++)
 	{
 		auto face = mesh->mFaces[i];
-		for (int j = 0; j < face.mNumIndices; j++) indices.push_back(face.mIndices[j]);
+		for (int j = 0; j < face.mNumIndices; j++)
+			indices.push_back(face.mIndices[j]);
 	}
 
 	memcpy(vertices.data(), mesh->mVertices, mesh->mNumVertices * sizeof(glm::vec3));
@@ -155,11 +161,14 @@ Mesh Model::processMesh(aiMesh* mesh)
 	{
 		for (int i = 0; i < mesh->mNumVertices; i++)
 		{
-			texCoords[i] = *(glm::vec2*)(&mesh->mTextureCoords[0][i]);
+			texCoords[i].x = mesh->mTextureCoords[0][i].x;
+			texCoords[i].y = mesh->mTextureCoords[0][i].y;
+			//texCoords[i] = glm::fract(texCoords[i]);
 		}
 	}
 	else
 	{
+		std::cout << "\t\t[Invalid TexCoords]\n";
 		memset(texCoords.data(), 0, mesh->mNumVertices * sizeof(glm::vec2));
 	}
 
@@ -171,7 +180,6 @@ Mesh Model::processMesh(aiMesh* mesh)
 	m.normals.resize(normals.size());
 	m.texCoords = texCoords;
 	m.indices = indices;
-	m.matIndex = mesh->mMaterialIndex;
 
 	std::transform(vertices.begin(), vertices.end(), m.vertices.begin(),
 		[model](const glm::vec3& v)
@@ -186,5 +194,31 @@ Mesh Model::processMesh(aiMesh* mesh)
 		}
 	);
 
+	std::cout << "\t[Mesh]\tnVertices = " << vertices.size() << ", nFaces = " <<
+		indices.size() / 3 << "\n";
+
+	auto makeUint32 = [](uint16_t high, uint16_t low) -> uint32_t
+	{
+		return static_cast<uint32_t>(high) << 16 | low;
+	};
+
+	int texIndex = -1;
+	if (mesh->mMaterialIndex >= 0)
+	{
+		aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+		if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0)
+		{
+			aiString str;
+			material->GetTexture(aiTextureType_DIFFUSE, 0, &str);
+			std::filesystem::path p(str.C_Str());
+			std::string path = p.is_absolute() ?
+				p.generic_string() : m_Name + "/../" + p.generic_string();
+			std::cout << "\t\t" << p.generic_string() << "\n";
+			std::cout << "\t\t" << path << "\n";
+			texIndex = Resource::addImage(path);
+		}
+	}
+	m.matTexIndex = texIndex << 16 | mesh->mMaterialIndex;
+	std::cout << "\t\t" << texIndex << " " << mesh->mMaterialIndex << "\n";
 	return m;
 }
