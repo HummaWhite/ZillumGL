@@ -1,4 +1,4 @@
-=type lib
+@type lib
 
 bool BUG = false;
 vec3 BUGVAL;
@@ -6,12 +6,12 @@ vec3 BUGVAL;
 uniform int spp;
 uniform int freeCounter;
 
-=include random.shader
-=include math.shader
-=include material.shader
-=include intersection.shader
-=include envMap.shader
-=include light.shader
+@include random.shader
+@include math.shader
+@include material.shader
+@include intersection.shader
+@include envMap.shader
+@include light.shader
 
 uniform vec3 camF;
 uniform vec3 camR;
@@ -46,7 +46,7 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 		vec3 Wo = -ray.dir;
 		vec3 N = surfaceInfo.norm;
 
-		if (dot(N, Wo) < 0) N = -N;
+		//if (dot(N, Wo) < 0) N = -N;
 		// [
 		int matTexId = texelFetch(matTexIndices, id).r;
 		int matId = matTexId & 0x0000ffff;
@@ -55,7 +55,7 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 		// [albedo     metallic/IOR     roughness     type]
 		//   vec3        float           float        uint
 		vec3 albedo;
-		if (texId == 0xffff)
+		if (texId == -1)
 			albedo = texelFetch(materials, matId * 2).rgb;
 		else
 		{

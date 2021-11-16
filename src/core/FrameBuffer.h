@@ -1,35 +1,43 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
 #include <vector>
+#include <set>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
 #include "Texture.h"
 #include "RenderBuffer.h"
+#include "GLStateObject.h"
 
-class FrameBuffer
+class FrameBuffer;
+using FrameBufferPtr = std::shared_ptr<FrameBuffer>;
+
+class FrameBuffer :
+	public GLStateObject
 {
 public:
-	FrameBuffer() : m_ID(0), m_Width(0), m_Height(0) {}
+	FrameBuffer(int width, int height, RenderBufferFormat rbFormat, const std::vector<TexturePtr>& texToAttach);
 	~FrameBuffer();
 
-	GLuint ID() const { return m_ID; }
-	int width() const { return m_Width; }
-	int height() const { return m_Height; }
+	int width() const { return mWidth; }
+	int height() const { return mHeight; }
 
-	void generate(int width, int height);
-	void bind() const;
-	void unbind() const;
-	void attachRenderBuffer(GLenum attachment, RenderBuffer& renderBuffer);
-	void detachRenderBuffer(GLenum attachment);
-	void attachTexture(GLenum attachment, Texture& texture, int mipmapLevel = 0);
-	void detachTexture(GLenum attachment);
-	bool checkComplete();
+	void bind();
+	void unbind();
 
-	void activateAttachmentTargets(const std::vector<GLenum>& attachments);
+	static FrameBufferPtr create(int width, int height, RenderBufferFormat rbFormat,
+		const std::vector<TexturePtr>& texToAttach);
+
+	static FrameBuffer* currentBinding() { return curBinding; }
 
 private:
-	GLuint m_ID;
-	int m_Width, m_Height;
+	bool checkComplete();
+
+private:
+	int mWidth, mHeight;
+	RenderBufferPtr mRenderBuffer;
+
+	static FrameBuffer* curBinding;
 };

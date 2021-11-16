@@ -1,9 +1,9 @@
-=type compute
+@type compute
 
 layout(rgba32f, binding = 0) uniform image2D frame;
 //layout(rgba32f, binding = 1) uniform writeonly image2D outImage;
 
-=include rayTest.shader
+@include rayTest.shader
 
 void main()
 {

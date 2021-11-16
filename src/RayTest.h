@@ -26,14 +26,15 @@ private:
 	void renderGUI();
 
 private:
-	Buffer screenVB;
-	VertexArray screenVA;
+	PipelinePtr pipeline;
 
-	Shader rayTestShader, postShader;
+	VertexBufferPtr screenVB;
+
+	ShaderPtr rayTestShader, postShader;
 
 	Camera camera = Camera({ 0.0f, -3.0f, 2.0f });
 
-	Texture frameTex;
+	Texture2DPtr frameTex;
 	int curFrame = 0;
 	int freeCounter = 0;
 
@@ -57,7 +58,7 @@ private:
 	int vertexCount;
 
 	int toneMapping = 2;
-	bool showBVH = false;
+	bool showBVH = true;
 	bool cursorDisabled = false;
 	bool firstCursorMove = true;
 	int lastCursorX = 0;
@@ -68,6 +69,8 @@ private:
 	int maxBounce = 3;
 	bool roulette = false;
 	float rouletteProb = 0.6f;
+	int envMapIndex;
+	bool pause = false;
 
 	int tileSize = 2048;
 
@@ -77,9 +80,9 @@ private:
 	const int sampleNum = 131072;
 	const int sampleDim = 256;
 	int sampler = 0;
-	BufferTexturePtr haltonTex;
-	BufferTexturePtr sobolTex;
-	TexturePtr noiseTex;
+	TextureBufferedPtr haltonTex;
+	TextureBufferedPtr sobolTex;
+	Texture2DPtr noiseTex;
 
 	int workgroupSizeX = 32;
 	int workgroupSizeY = 48;

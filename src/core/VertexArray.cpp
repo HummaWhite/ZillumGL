@@ -1,62 +1,77 @@
 #include "VertexArray.h"
 
-VertexArray::VertexArray()
-	:m_VerticesCount(0)
+const VertexArrayLayout LayoutPos2 =
 {
-	glCreateVertexArrays(1, &m_ID);
+	{ { 0, 2, DataType::F32, 0, 0 } }, 8
+};
+
+const VertexArrayLayout LayoutPos3Tex2Norm3Interw =
+{
+	{
+		{ 0, 3, DataType::F32, 0, 0 },
+		{ 1, 2, DataType::F32, 12, 0 },
+		{ 2, 3, DataType::F32, 20, 0 }
+	}, 32
+};
+
+VertexArray* VertexArray::curBinding = nullptr;
+VertexArrayPtr VertexArray::VALayoutPos2;
+VertexArrayPtr VertexArray::VALayoutPos3Tex2Norm3Interw;
+
+VertexArray::VertexArray(const VertexArrayLayout& layout) :
+	mLayout(layout), GLStateObject(GLStateObjectType::VertexArray)
+{
+	glCreateVertexArrays(1, &mId);
+	for (const auto& i : layout.attribs)
+		attribute(i);
 }
 
 VertexArray::~VertexArray()
 {
-	glDeleteVertexArrays(1, &m_ID);
+	glDeleteVertexArrays(1, &mId);
 }
 
-void VertexArray::addBuffer(const Buffer& vb, BufferLayout layout)
+void VertexArray::attribute(uint32_t index, int count, DataType type, uint32_t offset, uint32_t binding)
 {
-	addBuffer(&vb, layout);
+	glEnableVertexArrayAttrib(mId, index);
+	glVertexArrayAttribFormat(mId, index, count, static_cast<GLenum>(type), false, offset);
+	glVertexArrayAttribBinding(mId, index, binding);
 }
 
-void VertexArray::addBuffer(const Buffer* vb, BufferLayout layout)
+void VertexArray::attribute(const VertexArrayAttrib& attrib)
 {
-	if (vb == nullptr) return;
-	const auto& elements = layout.elements();
-	GLuint offset = 0;
-	GLuint bindingIndex = 0;
-
-	for (int i = 0; i < elements.size(); i++)
-	{
-		glEnableVertexArrayAttrib(m_ID, i);
-		int count = elements[i].count;
-		GLuint type = elements[i].type;
-		bool normalized = elements[i].normalized;
-		glVertexArrayAttribFormat(m_ID, i, count, type, normalized, offset);
-		glVertexArrayAttribBinding(m_ID, i, bindingIndex);
-		GLuint add = sizeofGLType(type) * count;
-		if (vb->batched()) add *= vb->elementsCount();
-		offset += add;
-	}
-
-	GLuint stride = vb->batched() ? 0 : layout.stride();
-	glVertexArrayVertexBuffer(m_ID, bindingIndex, vb->ID(), 0, stride);
-	m_VerticesCount = vb->elementsCount();
+	attribute(attrib.index, attrib.count, attrib.type, attrib.offset, attrib.binding);
 }
 
-void VertexArray::attachElementBuffer(const Buffer& eb)
+void VertexArray::bind()
 {
-	glVertexArrayElementBuffer(m_ID, eb.ID());
+	glBindVertexArray(mId);
+	curBinding = this;
 }
 
-void VertexArray::detachElementBuffer()
-{
-	glVertexArrayElementBuffer(m_ID, 0);
-}
-
-void VertexArray::bind() const
-{
-	glBindVertexArray(m_ID);
-}
-
-void VertexArray::unbind() const
+void VertexArray::unbind()
 {
 	glBindVertexArray(0);
+	curBinding = nullptr;
+}
+
+VertexArrayPtr VertexArray::create(const VertexArrayLayout& layout)
+{
+	return std::make_shared<VertexArray>(layout);
+}
+
+VertexArrayPtr VertexArray::createNewLayoutPos2()
+{
+	return create(LayoutPos2);
+}
+
+VertexArrayPtr VertexArray::createNewLayoutPos3Tex2Norm3Interw()
+{
+	return create(LayoutPos3Tex2Norm3Interw);
+}
+
+void VertexArray::initDefaultLayouts()
+{
+	VALayoutPos2 = VertexArray::create(LayoutPos2);
+	VALayoutPos3Tex2Norm3Interw = VertexArray::create(LayoutPos3Tex2Norm3Interw);
 }

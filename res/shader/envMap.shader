@@ -1,12 +1,12 @@
-=type lib
-=include math.shader
+@type lib
+@include math.shader
 
-uniform float envStrength;
 uniform sampler2D envMap;
 uniform isampler2D envAliasTable;
 uniform sampler2D envAliasProb;
 uniform float envSum;
 uniform bool sampleLight;
+uniform float envRotation;
 
 const vec3 BRIGHTNESS = vec3(0.299, 0.587, 0.114);
 
@@ -30,7 +30,8 @@ const LightSample INVALID_LIGHT_SAMPLE = lightSample(vec3(0.0), vec3(0.0), 0.0);
 
 vec3 envGetRadiance(vec3 Wi)
 {
-	return texture(envMap, sphereToPlane(Wi)).rgb * envStrength;
+	Wi = rotateZ(Wi, -envRotation);
+	return texture(envMap, sphereToPlane(Wi)).rgb;
 }
 
 float envGetPortion(vec3 Wi)
@@ -66,8 +67,8 @@ vec4 envImportanceSample(vec4 u)
 	vec2 uv = vec2(float(col) + 0.5, float(row + 0.5)) / vec2(float(w), float(h));
 	vec3 Wi = planeToSphere(uv);
 	//float pdf = envPdfLi(Wi);
+	Wi = rotateZ(Wi, envRotation);
 	float pdf = envGetPortion(Wi) * size.x* size.y * 0.5f * square(PiInv);
-
 	return vec4(Wi, pdf);
 }
 
@@ -82,8 +83,7 @@ LightSample envImportanceSample(vec3 x, vec4 u)
 	ray.dir = Wi;
 	float dist = 1e8;
 	if (bvhTest(ray, dist) || pdf == 0.0)
-	{
 		return INVALID_LIGHT_SAMPLE;
-	}
+
 	return lightSample(Wi, envGetRadiance(Wi) / pdf, pdf);
 }

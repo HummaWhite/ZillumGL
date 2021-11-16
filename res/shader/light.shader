@@ -1,5 +1,5 @@
-=type lib
-=include envMap.shader
+@type lib
+@include envMap.shader
 
 uniform samplerBuffer lightPower;
 uniform isamplerBuffer lightAlias;
@@ -7,6 +7,7 @@ uniform samplerBuffer lightProb;
 uniform int nLights;
 uniform float lightSum;
 uniform bool lightEnvUniformSample;
+uniform float lightSamplePortion;
 
 vec3 lightGetRadiance(int id, vec3 x, vec3 Wo)
 {
@@ -73,10 +74,8 @@ LightSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
 {
 	float pdfSampleLight = 0.0;
 
-	if (lightSum > 0.0)
-	{
-		pdfSampleLight = lightEnvUniformSample ? 0.5f : lightSum / (lightSum + envSum);
-	}
+	if (nLights > 0)
+		pdfSampleLight = lightEnvUniformSample ? lightSamplePortion : lightSum / (lightSum + envSum);
 
 	bool sampleLight = ud < pdfSampleLight;
 	float pdfSelect = sampleLight ? pdfSampleLight : 1.0 - pdfSampleLight;
@@ -90,11 +89,11 @@ LightSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
 float pdfSelectLight(int id)
 {
 	float fstPdf = dot(texelFetch(lightPower, id).rgb, BRIGHTNESS) / lightSum;
-	float sndPdf = lightEnvUniformSample ? 0.5f : lightSum / (lightSum + envSum);
+	float sndPdf = lightEnvUniformSample ? lightSamplePortion : lightSum / (lightSum + envSum);
 	return fstPdf * sndPdf;
 }
 
 float pdfSelectEnv()
 {
-	return lightEnvUniformSample ? 0.5f : envSum / (lightSum + envSum);
+	return lightEnvUniformSample ? (1.0 - lightSamplePortion) : envSum / (lightSum + envSum);
 }

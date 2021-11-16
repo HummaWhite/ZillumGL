@@ -1,34 +1,34 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
+#include <vector>
+#include <map>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <vector>
-#include <map>
 
 #include "Texture.h"
 #include "Buffer.h"
+#include "GLStateObject.h"
 
-const std::string SHADER_DEFAULT_DIR = "res/shader/";
+class Shader;
+using ShaderPtr = std::shared_ptr<Shader>;
 
 enum class ShaderType
 {
 	Graphics, Compute
 };
 
-class Shader
+class Shader :
+	public GLStateObject
 {
 public:
-	Shader() : m_ID(0) {}
-	Shader(const char* filePath);
+	Shader(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr);
 	~Shader();
 
-	GLuint ID() const { return m_ID; }
-
-	bool load(const char* filePath);
 	void enable() const;
 	void disable() const;
 
@@ -45,22 +45,16 @@ public:
 	void setMat3(const char* name, const glm::mat3& mat) const;
 	void setMat4(const char* name, const glm::mat4& mat) const;
 
-	void setTexture(const char* name, const Texture& tex);
-	void setTexture(const char* name, const Texture& tex, uint32_t slot);
 	void setTexture(const char* name, TexturePtr tex, uint32_t slot);
-
-	void setUniformBlock(const Buffer& buffer, int binding);
 
 	int getUniformLocation(const char* name) const;
 	static GLint getUniformLocation(GLuint programID, const char* name);
 
-	std::string name() const { return m_Name; }
-	ShaderType type() const { return m_Type; }
+	std::string name() const { return mName; }
+	ShaderType type() const { return mType; }
 
-	void resetTextureMap();
-
-	void setComputeShaderSizeHint(int x, int y, int z);
-	void setExtension(const std::string& ext) { extensionStr = ext; }
+	static ShaderPtr create(const File::path& path, const glm::ivec3& computeSize = glm::ivec3(1),
+		const std::string& extensionStr = "");
 
 private:
 	enum class ShaderLoadStat
@@ -77,18 +71,15 @@ private:
 	};
 
 private:
-	void loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat stat, std::map<std::string, bool>& inclRec);
+	void loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat stat, std::map<File::path, bool>& inclRec);
 	void compileShader(const ShaderText& text);
 	void checkShaderCompileInfo(uint32_t shaderId, const std::string& name);
 	void checkShaderLinkInfo();
 
 private:
-	GLuint m_ID;
-	std::string m_Name;
-	ShaderType m_Type;
+	std::string mName;
+	ShaderType mType;
 
-	std::map<std::string, int> m_TextureMap;
-
-	std::string extensionStr;
-	int computeGroupSize[3];
+	std::string mExtensionStr;
+	glm::ivec3 mComputeGroupSize;
 };

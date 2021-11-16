@@ -1,7 +1,6 @@
 #pragma once
 
 #include "core/Buffer.h"
-#include "core/BufferLayout.h"
 #include "core/Camera.h"
 #include "core/CheckError.h"
 #include "core/EngineBase.h"
@@ -10,9 +9,9 @@
 #include "core/Inputs.h"
 #include "core/Model.h"
 #include "core/RenderBuffer.h"
-#include "core/Renderer.h"
+#include "core/Pipeline.h"
 #include "core/Shader.h"
-#include "core/Shape.h"
+#include "core/Scene.h"
 #include "core/Texture.h"
 #include "core/VertexArray.h"
 #include "core/VerticalSync.h"

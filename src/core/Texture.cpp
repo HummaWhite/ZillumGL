@@ -1,117 +1,177 @@
 #include "Texture.h"
+#include "../util/Error.h"
 
-Texture::Texture() :
-	m_ID(0), m_Width(0), m_Height(0), m_BitsPerPixel(0)
+std::pair<TextureSourceFormat, DataType> getImageFormat(ImagePtr image)
 {
+	bool integ = (image->dataType() == ImageDataType::Int8);
+	auto srcType = integ ? DataType::U8 : DataType::F32;
+
+	switch (image->channels())
+	{
+	case 1:
+		return { integ ? TextureSourceFormat::Col1i : TextureSourceFormat::Col1f, srcType };
+	case 2:
+		return { integ ? TextureSourceFormat::Col2i : TextureSourceFormat::Col2f, srcType };
+	case 3:
+		return { integ ? TextureSourceFormat::Col3i : TextureSourceFormat::Col3f, srcType };
+	case 4:
+		return { integ ? TextureSourceFormat::Col4i : TextureSourceFormat::Col4f, srcType };
+	default:
+		break;
+	}
+	Error::impossiblePath();
+	return { integ ? TextureSourceFormat::Col1i : TextureSourceFormat::Col1f, srcType };
+}
+
+Texture::Texture(TextureFormat format, TextureType type) :
+	mFormat(format), mType(type), GLStateObject(GLStateObjectType::Texture)
+{
+	glCreateTextures(static_cast<GLenum>(type), 1, &mId);
 }
 
 Texture::~Texture()
 {
-	glDeleteTextures(1, &m_ID);
+	glDeleteTextures(1, &mId);
 }
 
-void Texture::create(GLenum type)
+void Texture::setFilter(TextureFilter filter)
 {
-	glCreateTextures(type, 1, &m_ID);
+	glTextureParameteri(mId, GL_TEXTURE_MIN_FILTER, static_cast<GLint>(filter));
+	glTextureParameteri(mId, GL_TEXTURE_MAG_FILTER, static_cast<GLint>(filter));
 }
 
-void Texture::generate2D(int width, int height, GLuint internalFormat)
+void Texture::setWrapping(TextureWrapping wrapping)
 {
-	glCreateTextures(GL_TEXTURE_2D, 1, &m_ID);
-	allocate2D(internalFormat, width, height, GL_RGB, GL_FLOAT);
+	glTextureParameteri(mId, GL_TEXTURE_WRAP_S, static_cast<GLint>(wrapping));
+	glTextureParameteri(mId, GL_TEXTURE_WRAP_T, static_cast<GLint>(wrapping));
+	//glTextureParameteri(mId, GL_TEXTURE_WRAP_R, static_cast<GLint>(wrapping));
 }
 
-void Texture::generateDepth2D(int width, int height, GLuint format)
+void Texture::setFilterWrapping(TextureFilter filter, TextureWrapping wrapping)
 {
-	glCreateTextures(GL_TEXTURE_2D, 1, &m_ID);
-	allocate2D(format, width, height, GL_DEPTH_COMPONENT, GL_FLOAT);
+	setFilter(filter);
+	setWrapping(wrapping);
 }
 
-void Texture::loadSingle(const std::string& filePath, GLuint internalFormat)
+Texture2D::Texture2D(int width, int height, TextureFormat format) :
+	mWidth(width), mHeight(height), Texture(format, TextureType::Dim2)
 {
-	//stbi_set_flip_vertically_on_load(1);
-	GLubyte* data = stbi_load(filePath.c_str(), &m_Width, &m_Height, &m_BitsPerPixel, 4);
-	if (data == nullptr)
+	allocate(format, width, height, TextureSourceFormat::Col3f, DataType::U8, nullptr);
+}
+
+Texture2D::Texture2D(ImagePtr image, TextureFormat format) :
+	mWidth(image->width()), mHeight(image->height()), Texture(format, TextureType::Dim2)
+{
+	auto [srcFormat, srcType] = getImageFormat(image);
+	allocate(format, mWidth, mHeight, srcFormat, srcType, image->data());
+}
+
+Texture2D::Texture2D(const File::path& path, TextureFormat format) :
+	Texture(format, TextureType::Dim2)
+{
+	auto image = Image::createFromFile(path, ImageDataType::Float32);
+	mWidth = image->width();
+	mHeight = image->height();
+	auto [srcFormat, srcType] = getImageFormat(image);
+	allocate(format, mWidth, mHeight, srcFormat, srcType, image->data());
+}
+
+Texture2D::Texture2D(TextureFormat format, int width, int height,
+	TextureSourceFormat srcFormat, DataType srcType, const void* data) :
+	mWidth(width), mHeight(height), Texture(format, TextureType::Dim2)
+{
+	allocate(format, width, height, srcFormat, srcType, data);
+}
+
+Texture2DPtr Texture2D::createEmpty(int width, int height, TextureFormat format)
+{
+	return std::make_shared<Texture2D>(width, height, format);
+}
+
+Texture2DPtr Texture2D::createFromImage(ImagePtr image, TextureFormat format)
+{
+	return std::make_shared<Texture2D>(image, format);
+}
+
+Texture2DPtr Texture2D::createFromFile(const File::path& path, TextureFormat format)
+{
+	return std::make_shared<Texture2D>(path, format);
+}
+
+Texture2DPtr Texture2D::createFromMemory(TextureFormat format, int width, int height,
+	TextureSourceFormat srcFormat, DataType srcType, const void* data)
+{
+	return std::make_shared<Texture2D>(format, width, height,
+		srcFormat, srcType, data);
+}
+
+void Texture2D::allocate(TextureFormat format, int width, int height,
+	TextureSourceFormat srcFormat, DataType srcType, const void* data)
+{
+	glTextureImage2DEXT(mId, GL_TEXTURE_2D, 0, static_cast<GLint>(format),
+		width, height, 0, static_cast<GLenum>(srcFormat), static_cast<GLenum>(srcType), data);
+	setFilterWrapping(TextureFilter::Linear, TextureWrapping::Repeat);
+}
+
+Texture2DArray::Texture2DArray(const std::vector<ImagePtr>& images, TextureFormat format) :
+	Texture(format, TextureType::Dim2Array)
+{
+	mMaxWidth = 0, mMaxHeight = 0;
+	for (const auto& img : images)
 	{
-		std::cout << "[Error]\t\tunable to load texture: " << filePath << std::endl;
-		return;
+		mMaxWidth = std::max(mMaxWidth, img->width());
+		mMaxHeight = std::max(mMaxHeight, img->height());
 	}
-
-	glCreateTextures(GL_TEXTURE_2D, 1, &m_ID);
-	allocate2D(internalFormat, m_Width, m_Height, GL_RGBA, GL_UNSIGNED_BYTE, data);
-
-	if (data != nullptr) stbi_image_free(data);
-}
-
-void Texture::loadHDRPanorama(const std::string& filePath)
-{
-	//stbi_set_flip_vertically_on_load(1);
-	float* data = stbi_loadf(filePath.c_str(), &m_Width, &m_Height, &m_BitsPerPixel, 0);
-	if (data == nullptr)
+	
+	glTextureImage3DEXT(mId, GL_TEXTURE_2D_ARRAY, 0, GL_SRGB,
+		mMaxWidth, mMaxHeight, images.size(), 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	
+	for (int i = 0; i < images.size(); i++)
 	{
-		std::cout << "[Error]\t\tunable to load texture: " << filePath << std::endl;
-		return;
+		const auto& img = images[i];
+		glTextureSubImage3D(mId, 0, 0, 0, i,
+		img->width(), img->height(), 1, GL_RGB, GL_UNSIGNED_BYTE, img->data());
 	}
+	glTextureParameteri(mId, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTextureParameteri(mId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	
+	glTextureParameteri(mId, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTextureParameteri(mId, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-	glCreateTextures(GL_TEXTURE_2D, 1, &m_ID);
-	allocate2D(GL_RGB16F, m_Width, m_Height, GL_RGB, GL_FLOAT, data);
-
-	if (data != nullptr) stbi_image_free(data);
+	mTexScales.resize(images.size());
+	for (int i = 0; i < images.size(); i++)
+	{
+		const auto& img = images[i];
+		mTexScales[i] = glm::vec2(img->width(), img->height()) / glm::vec2(mMaxWidth, mMaxHeight);
+	}
 }
 
-void Texture::generateTexBuffer(const Buffer& buffer, GLenum format)
+glm::vec2& Texture2DArray::getTexScale(int index)
 {
-	glCreateTextures(GL_TEXTURE_BUFFER, 1, &m_ID);
-	glTextureBuffer(m_ID, format, buffer.ID());
+	Error::check(index >= 0 && index < mTexScales.size(), "[Texture2DArray] index out of bound");
+	return mTexScales[index];
 }
 
-void Texture::setFilter(GLuint filterType)
+Texture2DArrayPtr Texture2DArray::createFromImages(const std::vector<ImagePtr>& images, TextureFormat format)
 {
-	glTextureParameteri(m_ID, GL_TEXTURE_MIN_FILTER, filterType);
-	glTextureParameteri(m_ID, GL_TEXTURE_MAG_FILTER, filterType);
+	return std::make_shared<Texture2DArray>(images, format);
 }
 
-void Texture::setWrapping(GLuint wrappingType)
+TextureBuffered::TextureBuffered(BufferPtr buffer, TextureFormat format) :
+	mBuffer(buffer), Texture(format, TextureType::Buffered)
 {
-	glTextureParameteri(m_ID, GL_TEXTURE_WRAP_S, wrappingType);
-	glTextureParameteri(m_ID, GL_TEXTURE_WRAP_T, wrappingType);
+	Error::check(buffer != nullptr, "[TextureBuffered]\tnull buffer ptr");
+	glCreateTextures(GL_TEXTURE_BUFFER, 1, &mId);
+	glTextureBuffer(mId, static_cast<GLenum>(format), buffer->id());
 }
 
-void Texture::setFilterAndWrapping(GLuint filterType, GLuint wrappingType)
+void TextureBuffered::write(int64_t offset, int64_t size, const void* data)
 {
-	setFilter(filterType);
-	setWrapping(wrappingType);
+	Error::check(offset + size <= mBuffer->size(), "[TextureBuffered]\twrite size > allocated");
+	glNamedBufferSubData(mBuffer->id(), offset, size, data);
 }
 
-void Texture::setParameter(GLenum pname, GLint value)
+TextureBufferedPtr TextureBuffered::createFromBuffer(BufferPtr buffer, TextureFormat format)
 {
-	glTextureParameteri(m_ID, pname, value);
-}
-
-void Texture::generateMipmap()
-{
-	glGenerateTextureMipmap(m_ID);
-}
-
-void Texture::loadData(GLuint internalFormat, int width, int height, GLuint sourceFormat, GLuint dataType, const void* data)
-{
-	glCreateTextures(GL_TEXTURE_2D, 1, &m_ID);
-	allocate2D(internalFormat, width, height, sourceFormat, dataType, data);
-}
-
-void Texture::allocate2D(GLuint internalFormat, int width, int height, GLuint sourceFormat, GLuint dataType, const void* data)
-{
-	glTextureImage2DEXT(m_ID, GL_TEXTURE_2D, 0, internalFormat, width, height, 0, sourceFormat, dataType, data);
-	setFilterAndWrapping(GL_LINEAR, GL_CLAMP_TO_EDGE);
-}
-
-void BufferTexture::allocate(int size, const void* data, GLenum format)
-{
-	buf.allocate(size, data, 0);
-	generateTexBuffer(buf, format);
-}
-
-void BufferTexture::write(int offset, int size, const void* data)
-{
-	buf.write(offset, size, data);
+	return std::make_shared<TextureBuffered>(buffer, format);
 }

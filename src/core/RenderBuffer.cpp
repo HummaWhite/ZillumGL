@@ -1,14 +1,18 @@
 #include "RenderBuffer.h"
 
-RenderBuffer::~RenderBuffer()
+RenderBuffer::RenderBuffer(int width, int height, RenderBufferFormat format) :
+	mWidth(width), mHeight(height), mFormat(format), GLStateObject(GLStateObjectType::RenderBuffer)
 {
-	glDeleteRenderbuffers(1, &m_ID);
+	glCreateRenderbuffers(1, &mId);
+	glNamedRenderbufferStorage(mId, static_cast<GLenum>(format), width, height);
 }
 
-void RenderBuffer::allocate(GLenum format, int width, int height)
+RenderBuffer::~RenderBuffer()
 {
-	glCreateRenderbuffers(1, &m_ID);
-	glNamedRenderbufferStorage(m_ID, format, width, height);
-	m_Width = width;
-	m_Height = height;
+	glDeleteRenderbuffers(1, &mId);
+}
+
+RenderBufferPtr RenderBuffer::create(int width, int height, RenderBufferFormat format)
+{
+	return std::make_shared<RenderBuffer>(width, height, format);
 }

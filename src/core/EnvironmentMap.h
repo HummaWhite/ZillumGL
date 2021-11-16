@@ -1,29 +1,34 @@
 #pragma once
 
+#include <memory>
+
 #include "Texture.h"
+
+class EnvironmentMap;
+using EnvironmentMapPtr = std::shared_ptr<EnvironmentMap>;
 
 class EnvironmentMap
 {
 public:
-	EnvironmentMap() {};
+	EnvironmentMap(const File::path& path);
 
-	void load(const std::string& path);
+	Texture2DPtr envMap() { return mEnvMap; }
+	Texture2DPtr aliasTable() { return mAliasTable; }
+	Texture2DPtr aliasProb() { return mAliasProb; }
 
-	Texture& getEnvMap() { return envMap; }
-	Texture& getAliasTable() { return aliasTable; }
-	Texture& getAliasProb() { return aliasProb; }
+	int width() const { return mEnvMap->width(); }
+	int height() const { return mEnvMap->height(); }
 
-	int width() const { return envMap.width(); }
-	int height() const { return envMap.height(); }
+	int sumPdf() const { return mSumPdf; }
 
-	int sum() const { return sumPdf; }
+	static EnvironmentMapPtr create(const File::path& path);
 
 private:
 	static float setupAliasTable(int* alias, float* pdf, int n, int stride);
 
 private:
-	Texture envMap;
-	Texture aliasTable;
-	Texture aliasProb;
-	float sumPdf = 0.0f;
+	Texture2DPtr mEnvMap;
+	Texture2DPtr mAliasTable;
+	Texture2DPtr mAliasProb;
+	float mSumPdf = 0.0f;
 };

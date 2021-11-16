@@ -1,22 +1,36 @@
 #include "Buffer.h"
+#include "../util/Error.h"
 
-void Buffer::allocate(int size, const void* data, GLuint elementsCount, bool batched, GLenum type)
+Buffer::Buffer(int64_t size, const void* data, BufferUsage usage) :
+	mSize(size), GLStateObject(GLStateObjectType::Buffer)
 {
-	m_ElementsCount = elementsCount;
-	m_Size = size;
-	m_Batched = batched;
-
-	glCreateBuffers(1, &m_ID);
-	glNamedBufferData(m_ID, size, data, type);
-}
-
-void Buffer::write(int offset, int size, const void* data)
-{
-	if (offset + size > m_Size || !m_ID) return;
-	glNamedBufferSubData(m_ID, offset, size, data);
+	glCreateBuffers(1, &mId);
+	glNamedBufferData(mId, size, data, static_cast<GLenum>(usage));
 }
 
 Buffer::~Buffer()
 {
-	glDeleteBuffers(1, &m_ID);
+	glDeleteBuffers(1, &mId);
+}
+
+void Buffer::allocate(int64_t size, const void* data, BufferUsage usage)
+{
+	mSize = size;
+	glNamedBufferData(mId, size, data, static_cast<GLenum>(usage));
+}
+
+void Buffer::write(int64_t offset, int64_t size, const void* data)
+{
+	Error::check(offset + size <= mSize, "[Buffer]\twrite size > allocated");
+	glNamedBufferSubData(mId, offset, size, data);
+}
+
+BufferPtr Buffer::create(int64_t size, const void* data, BufferUsage usage)
+{
+	return std::make_shared<Buffer>(size, data, usage);
+}
+
+VertexBufferPtr VertexBuffer::create(const void* data, size_t size, size_t nVertices, BufferUsage usage)
+{
+	return std::make_shared<VertexBuffer>(data, size, nVertices, usage);
 }

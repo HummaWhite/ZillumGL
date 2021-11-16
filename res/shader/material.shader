@@ -1,5 +1,5 @@
-=type lib
-=include math.shader
+@type lib
+@include math.shader
 
 const uint Diffuse = 1 << 0;
 const uint GlosRefl = 1 << 1;

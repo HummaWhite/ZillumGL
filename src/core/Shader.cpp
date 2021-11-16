@@ -1,53 +1,43 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include "Shader.h"
+#include "../util/Error.h"
 
 #include <fstream>
 #include <sstream>
 #include <cstring>
 #include <string>
 
-bool Shader::load(const char* filePath)
+const File::path ShaderDefaultDir = File::absolute(File::path("res/shader"));
+
+Shader::Shader(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr) :
+	mType(ShaderType::Graphics), mName(path.generic_string()), mExtensionStr(extensionStr),
+	mComputeGroupSize(computeSize), GLStateObject(GLStateObjectType::Shader)
 {
-	m_Type = ShaderType::Graphics;
 	ShaderText text;
 	std::fstream file;
-	
-	std::map<std::string, bool> inclRec;
-	inclRec[SHADER_DEFAULT_DIR + filePath] = true;
-	file.open(SHADER_DEFAULT_DIR + filePath);
-	if (!file.is_open()) return false;
 
-	std::cout << "[Shader]\tLoading [" << SHADER_DEFAULT_DIR + filePath << "] ...\n";
+	std::map<File::path, bool> inclRec;
+	auto fullPath = ShaderDefaultDir / path;
+	inclRec[fullPath] = true;
 
-	try
-	{
-		loadShader(file, text, ShaderLoadStat::None, inclRec);
-	}
-	catch (const char* e)
-	{
-		std::cout << "\n[Error] " << e << std::endl;
-		return false;
-	}
+	file.open(fullPath);
+	Error::check(file.is_open(), "[Shader]\tunable to load file");
+	Error::log("Shader", "loading [" + fullPath.generic_string() + "] ...");
+
+	loadShader(file, text, ShaderLoadStat::None, inclRec);
 
 	compileShader(text);
-	m_Name = std::string(filePath);
-	return true;
-}
-
-Shader::Shader(const char* filePath)
-{
-	load(filePath);
 }
 
 Shader::~Shader()
 {
-	glDeleteProgram(m_ID);
+	glDeleteProgram(mId);
 }
 
 void Shader::enable() const
 {
-	glUseProgram(m_ID);
+	glUseProgram(mId);
 }
 
 void Shader::disable() const
@@ -57,92 +47,70 @@ void Shader::disable() const
 
 void Shader::set1i(const char* name, int v) const
 {
-	glProgramUniform1i(m_ID, getUniformLocation(name), v);
+	glProgramUniform1i(mId, getUniformLocation(name), v);
 }
 
 void Shader::set1f(const char* name, float v0) const
 {
-	glProgramUniform1f(m_ID, getUniformLocation(name), v0);
+	glProgramUniform1f(mId, getUniformLocation(name), v0);
 }
 
 void Shader::set2i(const char* name, int v0, int v1) const
 {
-	glProgramUniform2i(m_ID, getUniformLocation(name), v0, v1);
+	glProgramUniform2i(mId, getUniformLocation(name), v0, v1);
 }
 
 void Shader::set2f(const char* name, float v0, float v1) const
 {
-	glProgramUniform2f(m_ID, getUniformLocation(name), v0, v1);
+	glProgramUniform2f(mId, getUniformLocation(name), v0, v1);
 }
 
 void Shader::set3f(const char* name, float v0, float v1, float v2) const
 {
-	glProgramUniform3f(m_ID, getUniformLocation(name), v0, v1, v2);
+	glProgramUniform3f(mId, getUniformLocation(name), v0, v1, v2);
 }
 
 void Shader::set4f(const char* name, float v0, float v1, float v2, float v3) const
 {
-	glProgramUniform4f(m_ID, getUniformLocation(name), v0, v1, v2, v3);
+	glProgramUniform4f(mId, getUniformLocation(name), v0, v1, v2, v3);
+}
+
+void Shader::setVec2(const char* name, const glm::vec2& vec) const
+{
+	glProgramUniform2f(mId, getUniformLocation(name), vec.x, vec.y);
 }
 
 void Shader::setVec3(const char* name, const glm::vec3& vec) const
 {
-	glProgramUniform3f(m_ID, getUniformLocation(name), vec.x, vec.y, vec.z);
+	glProgramUniform3f(mId, getUniformLocation(name), vec.x, vec.y, vec.z);
 }
 
 void Shader::setVec4(const char* name, const glm::vec4& vec) const
 {
-	glProgramUniform4f(m_ID, getUniformLocation(name), vec.x, vec.y, vec.z, vec.w);
+	glProgramUniform4f(mId, getUniformLocation(name), vec.x, vec.y, vec.z, vec.w);
 }
 
 void Shader::setMat3(const char* name, const glm::mat3& mat) const
 {
-	glProgramUniformMatrix3fv(m_ID, getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(mat));
+	glProgramUniformMatrix3fv(mId, getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(mat));
 }
 
 void Shader::setMat4(const char* name, const glm::mat4& mat) const
 {
-	glProgramUniformMatrix4fv(m_ID, getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(mat));
-}
-
-void Shader::setTexture(const char* name, const Texture& tex)
-{
-	std::string texName(name);
-	std::map<std::string, int>::iterator it = m_TextureMap.find(texName);
-
-	int texUnit = 0;
-	if (it == m_TextureMap.end())
-	{
-		texUnit = m_TextureMap.size();
-		m_TextureMap[texName] = texUnit;
-	}
-	
-	glBindTextureUnit(texUnit, tex.ID());
-	set1i(name, texUnit);
-}
-
-void Shader::setTexture(const char* name, const Texture& tex, uint32_t slot)
-{
-	glBindTextureUnit(slot, tex.ID());
-	set1i(name, slot);
+	glProgramUniformMatrix4fv(mId, getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(mat));
 }
 
 void Shader::setTexture(const char* name, TexturePtr tex, uint32_t slot)
 {
-	glBindTextureUnit(slot, tex->ID());
+	glBindTextureUnit(slot, tex->id());
 	set1i(name, slot);
-}
-
-void Shader::setUniformBlock(const Buffer& buffer, int binding)
-{
-	glUniformBufferEXT(m_ID, binding, buffer.ID());
 }
 
 int Shader::getUniformLocation(const char* name) const
 {
-	GLint location = glGetUniformLocation(m_ID, name);
+	GLint location = glGetUniformLocation(mId, name);
 	if (location == -1)
-		std::cout << "[Error]\t\tUnable to locate the uniform [" << name << "] in shader: " << m_Name << std::endl;
+		std::cout << "[Error]\t\tUnable to locate the uniform [" << name << "] in shader: " << mName << std::endl;
 	return location;
 }
 
@@ -154,74 +122,69 @@ GLint Shader::getUniformLocation(GLuint programID, const char* name)
 	return location;
 }
 
-void Shader::resetTextureMap()
+ShaderPtr Shader::create(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr)
 {
-	m_TextureMap.clear();
+	return std::make_shared<Shader>(path, computeSize, extensionStr);
 }
 
-void Shader::setComputeShaderSizeHint(int x, int y, int z)
-{
-	computeGroupSize[0] = x;
-	computeGroupSize[1] = y;
-	computeGroupSize[2] = z;
-}
-
-void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat stat, std::map<std::string, bool>& inclRec)
+void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat stat,
+	std::map<File::path, bool>& inclRec)
 {
 	std::string line;
 	while (std::getline(file, line))
 	{
-		if (line[0] == '=')
+		if (line[0] == '@')
 		{
 			std::string macro, arg;
 			std::stringstream ssline(line);
 			ssline >> macro;
-			if (macro == "=type")
+			if (macro == "@type")
 			{
 				ssline >> arg;
 				if (arg == "vertex")
 				{
-					if (stat == ShaderLoadStat::Vertex) throw "redefinition";
+					Error::check(stat != ShaderLoadStat::Vertex, "[Shader] redef");
 					stat = ShaderLoadStat::Vertex;
-					text.vertex += "\n#version 450\n" + extensionStr;
+					text.vertex += "\n#version 450\n" + mExtensionStr;
 				}
 				else if (arg == "fragment")
 				{
-					if (stat == ShaderLoadStat::Fragment) throw "redefinition";
+					Error::check(stat != ShaderLoadStat::Fragment, "[Shader] redef");
 					stat = ShaderLoadStat::Fragment;
-					text.fragment += "\n#version 450\n" + extensionStr;
+					text.fragment += "\n#version 450\n" + mExtensionStr;
 				}
 				else if (arg == "geometry")
 				{
-					if (stat == ShaderLoadStat::Geometry) throw "redefinition";
-					text.geometry += "\n#version 450\n" + extensionStr;
+					Error::check(stat != ShaderLoadStat::Geometry, "[Shader] redef");
+					stat = ShaderLoadStat::Geometry;
+					text.geometry += "\n#version 450\n" + mExtensionStr;
 				}
 				else if (arg == "compute")
 				{
-					if (stat == ShaderLoadStat::Compute) throw "redefinition";
+					Error::check(stat != ShaderLoadStat::Compute, "[Shader] redef");
 					stat = ShaderLoadStat::Compute;
-					m_Type = ShaderType::Compute;
-					text.compute += "\n#version 450\n" + extensionStr +
-						"layout(local_size_x = " + std::to_string(computeGroupSize[0]) +
-						", local_size_y = " + std::to_string(computeGroupSize[1]) +
-						", local_size_z = " + std::to_string(computeGroupSize[2]) +
+					mType = ShaderType::Compute;
+					text.compute += "\n#version 450\n" + mExtensionStr +
+						"layout(local_size_x = " + std::to_string(mComputeGroupSize.x) +
+						", local_size_y = " + std::to_string(mComputeGroupSize.y) +
+						", local_size_z = " + std::to_string(mComputeGroupSize.z) +
 						") in;\n";
 				}
 				else if (arg != "lib") throw "included file is not a lib";
 				continue;
 			}
-			else if (macro == "=include")
+			else if (macro == "@include")
 			{
 				ssline >> arg;
-				arg = SHADER_DEFAULT_DIR + arg;
-				if (inclRec.find(arg) != inclRec.end()) continue;
+				File::path incPath = ShaderDefaultDir / File::path(arg);
+				if (inclRec.find(incPath) != inclRec.end()) continue;
 
 				std::fstream file;
-				file.open(arg);
-				if (!file.is_open()) throw "included file not found";
+				file.open(incPath);
+				Error::check(file.is_open(), "[Shader] included file not found");
 
 				loadShader(file, text, stat, inclRec);
-				inclRec[arg] = true;
+				inclRec[incPath] = true;
 				continue;
 			}
 		}
@@ -249,9 +212,9 @@ void Shader::compileShader(const ShaderText& text)
 	int shaderType[] = { GL_VERTEX_SHADER, GL_FRAGMENT_SHADER, GL_GEOMETRY_SHADER, GL_COMPUTE_SHADER };
 	std::string shaderName[] = { "Vertex", "Fragment", "Geometry", "Compute" };
 	const std::string* shaders[] = { &text.vertex, &text.fragment, &text.geometry, &text.compute };
-	const char *shaderText[] = { text.vertex.c_str(), text.fragment.c_str(), text.geometry.c_str(), text.compute.c_str() };
+	const char* shaderText[] = { text.vertex.c_str(), text.fragment.c_str(), text.geometry.c_str(), text.compute.c_str() };
 
-	m_ID = glCreateProgram();
+	mId = glCreateProgram();
 
 	for (int i = 0; i < 4; i++)
 	{
@@ -260,11 +223,11 @@ void Shader::compileShader(const ShaderText& text)
 		glShaderSource(shader, 1, &shaderText[i], nullptr);
 		glCompileShader(shader);
 		checkShaderCompileInfo(shader, shaderName[i]);
-		glAttachShader(m_ID, shader);
+		glAttachShader(mId, shader);
 		glDeleteShader(shader);
 	}
 
-	glLinkProgram(m_ID);
+	glLinkProgram(mId);
 	checkShaderLinkInfo();
 }
 
@@ -277,19 +240,19 @@ void Shader::checkShaderCompileInfo(uint32_t shaderId, const std::string& name)
 		const int length = 8192;
 		char info[length];
 		glGetShaderInfoLog(shaderId, length, nullptr, info);
-		std::cout << "\n[Shader]\t\t" << name << " compilation error\n" << info << "\n";
+		Error::log("Shader", std::string(info));
 	}
 }
 
 void Shader::checkShaderLinkInfo()
 {
 	int linkSuccess;
-	glGetProgramiv(m_ID, GL_LINK_STATUS, &linkSuccess);
+	glGetProgramiv(mId, GL_LINK_STATUS, &linkSuccess);
 	if (linkSuccess != GL_TRUE)
 	{
 		const int length = 8192;
 		char info[length];
-		glGetProgramInfoLog(m_ID, length, nullptr, info);
-		std::cout << "\n[Shader]\t\tlink error\n" << info << "\n";
+		glGetProgramInfoLog(mId, length, nullptr, info);
+		Error::log("Shader", std::string(info));
 	}
 }

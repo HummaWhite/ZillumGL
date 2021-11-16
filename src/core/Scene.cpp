@@ -2,18 +2,7 @@
 
 SceneBuffer Scene::genBuffers()
 {
-	auto vertexBuf = std::make_shared<BufferTexture>();
-	auto normalBuf = std::make_shared<BufferTexture>();
-	auto texCoordBuf = std::make_shared<BufferTexture>();
-	auto indexBuf = std::make_shared<BufferTexture>();
-	auto boundBuf = std::make_shared<BufferTexture>();
-	auto hitTableBuf = std::make_shared<BufferTexture>();
-	auto matTexIndexBuf = std::make_shared<BufferTexture>();
-	auto materialBuf = std::make_shared<BufferTexture>();
-	auto lightPowerBuf = std::make_shared<BufferTexture>();
-	auto lightAliasBuf = std::make_shared<BufferTexture>();
-	auto lightProbBuf = std::make_shared<BufferTexture>();
-	auto uvScaleBuf = std::make_shared<BufferTexture>();
+	SceneBuffer ret;
 
 	std::vector<glm::vec3> vertices;
 	std::vector<glm::vec3> normals;
@@ -78,7 +67,21 @@ SceneBuffer Scene::genBuffers()
 
 	auto [lightPower, lightAlias, lightProb] = genLightTable();
 
-	vertexBuf->allocate(vertices, GL_RGB32F);
+	ret.vertex = TextureBuffered::createFromVector(vertices, TextureFormat::Col3x32f);
+	ret.normal = TextureBuffered::createFromVector(normals, TextureFormat::Col3x32f);
+	ret.texCoord = TextureBuffered::createFromVector(texCoords, TextureFormat::Col2x32f);
+	ret.index = TextureBuffered::createFromVector(indices, TextureFormat::Col1x32i);
+	ret.bound = TextureBuffered::createFromVector(bvhBuf.bounds, TextureFormat::Col3x32f);
+	ret.hitTable = TextureBuffered::createFromVector(bvhBuf.hitTable, TextureFormat::Col3x32i);
+	ret.matTexIndex = TextureBuffered::createFromVector(matTexIndices, TextureFormat::Col1x32i);
+	ret.material = TextureBuffered::createFromVector(materials, TextureFormat::Col3x32f);
+	ret.lightPower = TextureBuffered::createFromVector(lightPower, TextureFormat::Col3x32f);
+	ret.lightAlias = TextureBuffered::createFromVector(lightAlias, TextureFormat::Col1x32i);
+	ret.lightProb = TextureBuffered::createFromVector(lightProb, TextureFormat::Col1x32f);
+	ret.textures = Texture2DArray::createFromImages(Resource::getAllImages(), TextureFormat::Col3x32f);
+	ret.texUVScale = TextureBuffered::createFromVector(ret.textures->texScales(), TextureFormat::Col2x32f);
+
+	/*vertexBuf->allocate(vertices, GL_RGB32F);
 	normalBuf->allocate(normals, GL_RGB32F);
 	texCoordBuf->allocate(texCoords, GL_RG32F);
 	indexBuf->allocate(indices, GL_R32I);
@@ -89,13 +92,9 @@ SceneBuffer Scene::genBuffers()
 	lightPowerBuf->allocate(lightPower, GL_RGB32F);
 	lightAliasBuf->allocate(lightAlias, GL_R32I);
 	lightProbBuf->allocate(lightProb, GL_R32F);
+	uvScaleBuf->allocate(uvScale, GL_RG32F);*/
 
-	auto [textures, uvScale] = Resource::createTextureBatch();
-	uvScaleBuf->allocate(uvScale, GL_RG32F);
-
-	return SceneBuffer{ vertexBuf, normalBuf, texCoordBuf, indexBuf, boundBuf,
-		hitTableBuf, matTexIndexBuf, materialBuf, lightPowerBuf, lightAliasBuf, lightProbBuf,
-		textures, uvScaleBuf };
+	return ret;
 }
 
 void Scene::addObject(std::shared_ptr<Model> object, uint8_t matIndex)

@@ -7,19 +7,19 @@
 
 struct SceneBuffer
 {
-	BufferTexturePtr vertex;
-	BufferTexturePtr normal;
-	BufferTexturePtr texCoord;
-	BufferTexturePtr index;
-	BufferTexturePtr bound;
-	BufferTexturePtr hitTable;
-	BufferTexturePtr matTexIndex;
-	BufferTexturePtr material;
-	BufferTexturePtr lightPower;
-	BufferTexturePtr lightAlias;
-	BufferTexturePtr lightProb;
-	TexturePtr textures;
-	BufferTexturePtr texUVScale;
+	TextureBufferedPtr vertex;
+	TextureBufferedPtr normal;
+	TextureBufferedPtr texCoord;
+	TextureBufferedPtr index;
+	TextureBufferedPtr bound;
+	TextureBufferedPtr hitTable;
+	TextureBufferedPtr matTexIndex;
+	TextureBufferedPtr material;
+	TextureBufferedPtr lightPower;
+	TextureBufferedPtr lightAlias;
+	TextureBufferedPtr lightProb;
+	Texture2DArrayPtr textures;
+	TextureBufferedPtr texUVScale;
 };
 
 class Scene
@@ -51,10 +51,11 @@ public:
 	std::vector<std::pair<std::shared_ptr<Model>, glm::vec3>> lights;
 	std::vector<Material> materials;
 	
-	std::shared_ptr<EnvironmentMap> envMap;
+	EnvironmentMapPtr envMap;
 	bool sampleLight = true;
 	bool lightEnvUniformSample = false;
-	float envStrength = 1.0f;
+	float envStrength = 0.5f;
+	float envRotation = 0.0f;
 	float lightSum = 0.0f;
 	int nLights;
 

@@ -1,5 +1,5 @@
-=type lib
-=include math.shader
+@type lib
+@include math.shader
 
 uniform samplerBuffer vertices;
 uniform samplerBuffer normals;

@@ -1,5 +1,5 @@
-=type vertex
-#version 450 core
+@type vertex
+
 layout(location = 0) in vec2 aTexCoord;
 out vec2 texCoord;
 
@@ -10,8 +10,8 @@ void main()
 	gl_Position = vec4(transTex, 0.0, 1.0);
 }
 
-=type fragment
-#version 450 core
+@type fragment
+
 in vec2 texCoord;
 out vec4 FragColor;
 

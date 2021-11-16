@@ -1,4 +1,4 @@
-=type lib
+@type lib
 
 uint randSeed;
 

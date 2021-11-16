@@ -5,26 +5,58 @@
 #include <GLFW/glfw3.h>
 
 #include "Buffer.h"
-#include "BufferLayout.h"
+#include "GLStateObject.h"
 
-class VertexArray
+class VertexArray;
+using VertexArrayPtr = std::shared_ptr<VertexArray>;
+
+struct VertexArrayAttrib
+{
+	uint32_t index;
+	int count;
+	DataType type;
+	uint32_t offset;
+	uint32_t binding = 0;
+};
+
+struct VertexArrayLayout
+{
+	std::vector<VertexArrayAttrib> attribs;
+	int64_t stride;
+};
+
+class VertexArray :
+	public GLStateObject
 {
 public:
-	VertexArray();
+	VertexArray(const VertexArrayLayout& layout);
 	~VertexArray();
 
-	void addBuffer(const Buffer& vb, BufferLayout layout);
-	void addBuffer(const Buffer* vb, BufferLayout layout);
+	void attribute(uint32_t index, int count, DataType type, uint32_t offset, uint32_t binding = 0);
+	void attribute(const VertexArrayAttrib& attrib);
 
-	void attachElementBuffer(const Buffer& eb);
-	void detachElementBuffer();
+	void bind();
+	void unbind();
 
-	GLuint ID() const { return m_ID; }
-	void bind() const;
-	void unbind() const;
-	GLuint verticesCount() const { return m_VerticesCount; }
+	int64_t stride() const { return mLayout.stride; }
+	// Create another VA object with same layouts
+	VertexArrayPtr deviceCopy() { return create(mLayout); }
+	
+	static VertexArrayPtr create(const VertexArrayLayout& layout);
+
+	static VertexArray* currentBinding() { return curBinding; }
+	static VertexArrayPtr layoutPos2() { return VALayoutPos2; }
+	static VertexArrayPtr layoutPos3Tex2Norm3Interw() { return VALayoutPos3Tex2Norm3Interw; }
+	static VertexArrayPtr createNewLayoutPos2();
+	static VertexArrayPtr createNewLayoutPos3Tex2Norm3Interw();
+
+	static void initDefaultLayouts();
 
 private:
-	GLuint m_ID;
-	GLuint m_VerticesCount;
+	static VertexArray* curBinding;
+	static VertexArrayPtr VALayoutPos2;
+	static VertexArrayPtr VALayoutPos3Tex2Norm3Interw;
+
+private:
+	VertexArrayLayout mLayout;
 };

@@ -1,5 +1,5 @@
-=type lib
-=include random.shader
+@type lib
+@include random.shader
 
 const float Pi = 3.14159265358979323846;
 const float PiInv = 1.0 / Pi;
@@ -183,4 +183,11 @@ float triangleSolidAngle(vec3 a, vec3 b, vec3 c)
 float triangleSolidAngle(vec3 va, vec3 vb, vec3 vc, vec3 p)
 {
 	return triangleSolidAngle(normalize(va - p), normalize(vb - p), normalize(vc - p));
+}
+
+vec3 rotateZ(vec3 v, float angle)
+{
+	float cost = cos(angle);
+	float sint = sin(angle);
+	return vec3(vec2(v.x * cost - v.y * sint, v.x * sint + v.y * cost), v.z);
 }

@@ -5,12 +5,12 @@ EngineBase::EngineBase() :
     m_ShouldTerminate(false),
     m_ErrorOccured(false)
 {
-    std::fstream setupFile;
-    std::cout << "Loading setup.ini" << std::endl;
-    setupFile.open("setup.ini");
+    Error::log("Init", "loading setup.txt");
+    std::fstream setupFile("setup.txt");
+    Error::check(setupFile.is_open(), "[Init]\tunable to open setup file");
+
     bool border;
     setupFile >> m_WindowWidth >> m_WindowHeight >> border;
-    setupFile.close();
     this->setupGL(m_WindowWidth, m_WindowHeight, border);
 }
 
@@ -47,10 +47,11 @@ void EngineBase::setupGL(int width, int height, bool border)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_DECORATED, border);
 
-    m_Window = glfwCreateWindow(width, height, "GLRT", NULL, NULL);
+    m_Window = glfwCreateWindow(width, height, "OpenGL-Try", NULL, NULL);
     if (m_Window == NULL)
     {
         this->error("Failed to create GLFW window");
+        return;
     }
     glfwMakeContextCurrent(m_Window);
 
@@ -61,7 +62,7 @@ void EngineBase::setupGL(int width, int height, bool border)
 
     this->setViewport(0, 0, m_WindowWidth, m_WindowHeight);
 
-    glfwSetInputMode(this->window(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetInputMode(this->window(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 }
 
 void EngineBase::swapBuffers()
@@ -77,7 +78,6 @@ void EngineBase::display()
 void EngineBase::error(const char* errString)
 {
     std::cout << "Engine Error: " << errString << std::endl;
-    throw errString;
     this->setTerminateStatus(true);
     this->m_ErrorOccured = true;
 }

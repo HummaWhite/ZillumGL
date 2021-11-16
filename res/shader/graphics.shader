@@ -1,5 +1,4 @@
-=type vertex
-#version 450 core
+@type vertex
 layout(location = 0) in vec2 pos;
 
 out vec2 scrCoord;
@@ -12,13 +11,12 @@ void main()
 }
 
 =type fragment
-#version 450 core
 in vec2 scrCoord;
 out vec4 FragColor;
 
 uniform sampler2D lastFrame;
 
-=include rayTest.shader
+@include rayTest.shader
 
 void main()
 {

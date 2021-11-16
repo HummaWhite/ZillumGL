@@ -1,14 +1,5 @@
 #pragma once
 
-#include <filesystem>
-#include <algorithm>
-#include <iostream>
-#include <fstream>
-#include <memory>
-#include <string>
-#include <random>
-#include <ctime>
-#include <map>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -18,20 +9,25 @@
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
 
+#include <iostream>
+#include <fstream>
+#include <memory>
+#include <string>
+#include <random>
+#include <ctime>
+#include <map>
+
 #include "Model.h"
 #include "Shader.h"
 #include "Buffer.h"
 #include "VertexArray.h"
-#include "Renderer.h"
+#include "Pipeline.h"
 #include "Texture.h"
 #include "Camera.h"
-#include "Shape.h"
 #include "VerticalSync.h"
 #include "FrameBuffer.h"
 #include "CheckError.h"
-#include "Accelerator/BVH.h"
-#include "Scene.h"
-#include "EnvironmentMap.h"
+#include "../util/Error.h"
 
 class EngineBase
 {

@@ -1,22 +1,35 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-class RenderBuffer
+#include "GLStateObject.h"
+
+class RenderBuffer;
+using RenderBufferPtr = std::shared_ptr<RenderBuffer>;
+
+enum class RenderBufferFormat
+{
+	Depth24Stencil8 = GL_DEPTH24_STENCIL8,
+	Depth32fStencil8 = GL_DEPTH32F_STENCIL8
+};
+
+class RenderBuffer :
+	public GLStateObject
 {
 public:
-	RenderBuffer() : m_ID(0), m_Width(0), m_Height(0) {}
+	RenderBuffer(int width, int height, RenderBufferFormat format);
 	~RenderBuffer();
 
-	GLuint ID() const { return m_ID; }
-	int width() const { return m_Width; }
-	int height() const { return m_Height; }
+	int width() const { return mWidth; }
+	int height() const { return mHeight; }
+	RenderBufferFormat format() const { return mFormat; }
 
-	void allocate(GLenum format, int width, int height);
+	static RenderBufferPtr create(int width, int height, RenderBufferFormat format);
 
 private:
-	GLuint m_ID;
-	int m_Width, m_Height;
+	int mWidth, mHeight;
+	RenderBufferFormat mFormat;
 };

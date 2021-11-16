@@ -211,9 +211,15 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene)
 			aiString str;
 			material->GetTexture(aiTextureType_DIFFUSE, 0, &str);
 			std::filesystem::path p(str.C_Str());
-			std::string path = p.is_absolute() ?
-				p.generic_string() : m_Name + "/../" + p.generic_string();
-			std::cout << "\t\t" << p.generic_string() << "\n";
+			std::string path = p.generic_string();
+			if (!p.is_absolute())
+			{
+				if (path[0] == '.' && path[1] == '.')
+					path = m_Name + "/../" + std::string(path.c_str() + 3);
+				else
+					path = m_Name + "/../" + path;
+			}
+			//std::cout << "\t\t" << p.generic_string() << "\n";
 			std::cout << "\t\t" << path << "\n";
 			texIndex = Resource::addImage(path);
 		}

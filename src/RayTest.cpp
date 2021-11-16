@@ -48,21 +48,35 @@ void RayTest::init()
 	glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &work_grp_inv);
 	printf("max local work group invocations %i\n", work_grp_inv);
 
-	screenVB.allocate(sizeof(SCREEN_COORD), SCREEN_COORD, 6);
-	screenVA.addBuffer(screenVB, LAYOUT_POS2);
+	VertexArray::initDefaultLayouts();
 
-	rayTestShader.setExtension("#extension GL_EXT_texture_array : enable\n");
-	rayTestShader.setComputeShaderSizeHint(workgroupSizeX, workgroupSizeY, 1);
-	rayTestShader.load("compute.shader");
-	postShader.load("postEffects.shader");
+	const float ScreenCoord[] = {
+		0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+		0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f
+	};
 
-	frameTex.generate2D(this->windowWidth(), this->windowHeight(), GL_RGBA32F);
-	frameTex.setFilterAndWrapping(GL_LINEAR, GL_CLAMP_TO_EDGE);
-	glBindImageTexture(0, frameTex.ID(), 0, false, 0, GL_READ_WRITE, GL_RGBA32F);
-	postShader.setTexture("frameBuffer", frameTex, 0);
+	int width = windowWidth();
+	int height = windowHeight();
 
-	scene.envMap = std::make_shared<EnvironmentMap>();
-	scene.envMap->load("res/texture/none.png");
+	PipelineCreateInfo plInfo;
+	plInfo.primType = PrimitiveType::Triangles;
+	plInfo.faceToDraw = DrawFace::FrontBack;
+	plInfo.polyMode = PolygonMode::Fill;
+	plInfo.clearBuffer = BufferBit::Color | BufferBit::Depth;
+	pipeline = Pipeline::create(plInfo);
+
+	screenVB = VertexBuffer::createTyped<glm::vec2>(ScreenCoord, 6);
+
+	rayTestShader = Shader::create("compute.shader", { workgroupSizeX, workgroupSizeY, 1 },
+		"#extension GL_EXT_texture_array : enable\n");
+	postShader = Shader::create("postEffects.shader");
+
+	frameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
+
+	Pipeline::bindTextureToImage(frameTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
+	postShader->setTexture("frameBuffer", frameTex, 0);
+
+	scene.envMap = EnvironmentMap::create("res/texture/none.png");
 	camera.setFOV(50.0f);
 	//camera.setPos({ 1.583f, -4.044f, 4.9f });
 	camera.setPos({ 0.0f, -3.7f, 1.0f });
@@ -80,37 +94,37 @@ void RayTest::init()
 	sobolTex = Sampler::genSobolSeqTexture(sampleNum, sampleDim);
 	noiseTex = Sampler::genNoiseTexture(this->windowWidth(), this->windowHeight());
 
-	rayTestShader.setTexture("vertices", sceneBuffers.vertex, 1);
-	rayTestShader.setTexture("normals", sceneBuffers.normal, 2);
-	rayTestShader.setTexture("texCoords", sceneBuffers.texCoord, 3);
-	rayTestShader.setTexture("indices", sceneBuffers.index, 4);
-	rayTestShader.setTexture("bounds", sceneBuffers.bound, 5);
-	rayTestShader.setTexture("hitTable", sceneBuffers.hitTable, 6);
-	rayTestShader.setTexture("matTexIndices", sceneBuffers.matTexIndex, 7);
-	rayTestShader.setTexture("envMap", scene.envMap->getEnvMap(), 8);
-	rayTestShader.setTexture("envAliasTable", scene.envMap->getAliasTable(), 9);
-	rayTestShader.setTexture("envAliasProb", scene.envMap->getAliasProb(), 10);
-	rayTestShader.setTexture("materials", sceneBuffers.material, 11);
-	rayTestShader.setTexture("matTypes", sceneBuffers.material, 11);
-	rayTestShader.setTexture("lightPower", sceneBuffers.lightPower, 12);
-	rayTestShader.setTexture("lightAlias", sceneBuffers.lightAlias, 13);
-	rayTestShader.setTexture("lightProb", sceneBuffers.lightProb, 14);
-	rayTestShader.setTexture("textures", sceneBuffers.textures, 15);
-	rayTestShader.setTexture("texUVScale", sceneBuffers.texUVScale, 16);
-	//rayTestShader.setTexture("haltonSeq", *haltonTex, 15);
-	rayTestShader.setTexture("sobolSeq", sobolTex, 17);
-	rayTestShader.setTexture("noiseTex", noiseTex, 18);
-	rayTestShader.set1i("nLights", scene.nLights);
-	rayTestShader.set1f("lightSum", scene.lightSum);
-	rayTestShader.set1f("envSum", scene.envMap->sum());
-	rayTestShader.set1i("objPrimCount", scene.objPrimCount);
-	rayTestShader.set1f("bvhDepth", glm::log2((float)boxCount));
-	rayTestShader.set1i("bvhSize", boxCount);
-	rayTestShader.set1i("sampleDim", sampleDim);
-	rayTestShader.set1i("sampleNum", sampleNum);
-	rayTestShader.set2i("frameSize", this->windowWidth(), this->windowHeight());
+	rayTestShader->setTexture("vertices", sceneBuffers.vertex, 1);
+	rayTestShader->setTexture("normals", sceneBuffers.normal, 2);
+	rayTestShader->setTexture("texCoords", sceneBuffers.texCoord, 3);
+	rayTestShader->setTexture("indices", sceneBuffers.index, 4);
+	rayTestShader->setTexture("bounds", sceneBuffers.bound, 5);
+	rayTestShader->setTexture("hitTable", sceneBuffers.hitTable, 6);
+	rayTestShader->setTexture("matTexIndices", sceneBuffers.matTexIndex, 7);
+	rayTestShader->setTexture("envMap", scene.envMap->envMap(), 8);
+	rayTestShader->setTexture("envAliasTable", scene.envMap->aliasTable(), 9);
+	rayTestShader->setTexture("envAliasProb", scene.envMap->aliasProb(), 10);
+	rayTestShader->setTexture("materials", sceneBuffers.material, 11);
+	rayTestShader->setTexture("matTypes", sceneBuffers.material, 11);
+	rayTestShader->setTexture("lightPower", sceneBuffers.lightPower, 12);
+	rayTestShader->setTexture("lightAlias", sceneBuffers.lightAlias, 13);
+	rayTestShader->setTexture("lightProb", sceneBuffers.lightProb, 14);
+	rayTestShader->setTexture("textures", sceneBuffers.textures, 15);
+	rayTestShader->setTexture("texUVScale", sceneBuffers.texUVScale, 16);
+	//rayTestShader->setTexture("haltonSeq", *haltonTex, 15);
+	rayTestShader->setTexture("sobolSeq", sobolTex, 17);
+	rayTestShader->setTexture("noiseTex", noiseTex, 18);
+	rayTestShader->set1i("nLights", scene.nLights);
+	rayTestShader->set1f("lightSum", scene.lightSum);
+	rayTestShader->set1f("envSum", scene.envMap->sumPdf());
+	rayTestShader->set1i("objPrimCount", scene.objPrimCount);
+	rayTestShader->set1f("bvhDepth", glm::log2((float)boxCount));
+	rayTestShader->set1i("bvhSize", boxCount);
+	rayTestShader->set1i("sampleDim", sampleDim);
+	rayTestShader->set1i("sampleNum", sampleNum);
+	rayTestShader->set2i("frameSize", this->windowWidth(), this->windowHeight());
 
-	postShader.set1i("toneMapping", toneMapping);
+	postShader->set1i("toneMapping", toneMapping);
 
 	this->setupGUI();
 	this->reset();
@@ -121,16 +135,16 @@ void RayTest::renderLoop()
 	this->processKey(0, 0, 0, 0);
 	VerticalSyncStatus(verticalSync);
 
-	renderer.clear(0.0f, 0.0f, 0.0f);
-	this->renderFrame();
+	pipeline->clear({ 0.0f, 0.0f, 0.0f, 1.0f });
+	renderFrame();
+
 	freeCounter++;
+	if (curSpp < maxSpp || !limitSpp)
+		curSpp++;
 
-	if (curSpp < maxSpp || !limitSpp) curSpp++;
-
-	this->renderGUI();
-
-	this->swapBuffers();
-	this->display();
+	renderGUI();
+	swapBuffers();
+	display();
 }
 
 void RayTest::terminate()
@@ -207,53 +221,53 @@ void RayTest::processResize(int width, int height)
 
 void RayTest::renderFrame()
 {
-	rayTestShader.set1i("spp", curSpp);
-	rayTestShader.set1i("freeCounter", freeCounter);
+	rayTestShader->set1i("spp", curSpp);
+	rayTestShader->set1i("freeCounter", freeCounter);
 
 	if (curSpp < maxSpp || !limitSpp)
 	{
-		int xNum = (this->windowWidth() + workgroupSizeX - 1) / workgroupSizeX;
-		int yNum = (this->windowHeight() + workgroupSizeY - 1) / workgroupSizeY;
+		int xNum = (windowWidth() + workgroupSizeX - 1) / workgroupSizeX;
+		int yNum = (windowHeight() + workgroupSizeY - 1) / workgroupSizeY;
 
-		rayTestShader.enable();
-		glDispatchCompute(xNum, yNum, 1);
-		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		Pipeline::dispatchCompute(xNum, yNum, 1, rayTestShader);
+		Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
 	}
 
-	renderer.clear(0.0f, 0.0f, 0.0f);
+	pipeline->clear({ 0.0f, 0.0f, 0.0f, 1.0f });
 	
-	this->setViewport(0, 0, this->windowWidth(), this->windowHeight());
-	renderer.draw(screenVA, postShader);
+	setViewport(0, 0, windowWidth(), windowHeight());
+	pipeline->draw(screenVB, VertexArray::layoutPos2(), postShader);
 }
 
 void RayTest::reset()
 {
 	curSpp = 0;
 	sceneBuffers.material->write(0, scene.materials.size() * sizeof(Material), scene.materials.data());
-	rayTestShader.set1i("showBVH", showBVH);
+	rayTestShader->set1i("showBVH", showBVH);
 
-	rayTestShader.set1i("aoMode", aoMode);
-	if (aoMode) rayTestShader.setVec3("aoCoef", aoCoef);
+	rayTestShader->set1i("aoMode", aoMode);
+	if (aoMode) rayTestShader->setVec3("aoCoef", aoCoef);
 
-	rayTestShader.setVec3("camF", camera.front());
-	rayTestShader.setVec3("camR", camera.right());
-	rayTestShader.setVec3("camU", camera.up());
-	rayTestShader.setVec3("camPos", camera.pos());
-	rayTestShader.set1f("tanFOV", glm::tan(glm::radians(camera.FOV() * 0.5f)));
-	rayTestShader.set1f("camAsp", (float)this->windowWidth() / (float)this->windowHeight());
-	rayTestShader.set1f("lensRadius", lensRadius);
-	rayTestShader.set1f("focalDist", focalDist);
+	rayTestShader->setVec3("camF", camera.front());
+	rayTestShader->setVec3("camR", camera.right());
+	rayTestShader->setVec3("camU", camera.up());
+	rayTestShader->setVec3("camPos", camera.pos());
+	rayTestShader->set1f("tanFOV", glm::tan(glm::radians(camera.FOV() * 0.5f)));
+	rayTestShader->set1f("camAsp", (float)windowWidth() / windowHeight());
+	rayTestShader->set1f("lensRadius", lensRadius);
+	rayTestShader->set1f("focalDist", focalDist);
 
-	rayTestShader.set1f("envStrength", scene.envStrength);
-	rayTestShader.set1i("sampleLight", scene.sampleLight);
-	rayTestShader.set1i("lightEnvUniformSample", scene.lightEnvUniformSample);
+	rayTestShader->set1f("lightSamplePortion", scene.envStrength);
+	rayTestShader->set1i("sampleLight", scene.sampleLight);
+	rayTestShader->set1i("lightEnvUniformSample", scene.lightEnvUniformSample);
+	rayTestShader->set1f("envRotation", scene.envRotation);
 
-	rayTestShader.set1i("roulette", roulette);
-	rayTestShader.set1f("rouletteProb", rouletteProb);
-	rayTestShader.set1i("maxBounce", maxBounce);
-	rayTestShader.set1i("matIndex", materialIndex);
+	rayTestShader->set1i("roulette", roulette);
+	rayTestShader->set1f("rouletteProb", rouletteProb);
+	rayTestShader->set1i("maxBounce", maxBounce);
+	rayTestShader->set1i("matIndex", materialIndex);
 
-	rayTestShader.set1i("sampler", sampler);
+	rayTestShader->set1i("sampler", sampler);
 }
 
 void RayTest::setupGUI()
@@ -316,31 +330,33 @@ void RayTest::renderGUI()
 		const char* samplers[] = { "Independent", "Sobol" };
 		if (ImGui::Combo("Sampler", &sampler, samplers, IM_ARRAYSIZE(samplers))) reset();
 
-		int tmp;
-		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.2f);
-		if (ImGui::Combo("EnvMap", &tmp, envStr.c_str(), envList.size()))
+		if (ImGui::Combo("EnvMap", &envMapIndex, envStr.c_str(), envList.size()))
 		{
-			scene.envMap = std::make_shared<EnvironmentMap>();
-			scene.envMap->load(envList[tmp]);
-			rayTestShader.setTexture("envMap", scene.envMap->getEnvMap(), 8);
-			rayTestShader.setTexture("envAliasTable", scene.envMap->getAliasTable(), 9);
-			rayTestShader.setTexture("envAliasProb", scene.envMap->getAliasProb(), 10);
-			rayTestShader.set1f("envSum", scene.envMap->sum());
+			scene.envMap = EnvironmentMap::create(envList[envMapIndex]);
+			rayTestShader->setTexture("envMap", scene.envMap->envMap(), 8);
+			rayTestShader->setTexture("envAliasTable", scene.envMap->aliasTable(), 9);
+			rayTestShader->setTexture("envAliasProb", scene.envMap->aliasProb(), 10);
+			rayTestShader->set1f("envSum", scene.envMap->sumPdf());
 			reset();
 		}
 
-		if (ImGui::Checkbox("Sample Direct Light", &scene.sampleLight) ||
-			ImGui::Checkbox("LightEnvUniform", &scene.lightEnvUniformSample)) reset();
+		if (ImGui::SliderAngle("EnvMap Rotation", &scene.envRotation, -180.0f, 180.0f))
+			reset();
 
-		ImGui::SameLine();
-		ImGui::SetNextItemWidth(-100);
-		if (ImGui::DragFloat("Strength", &scene.envStrength, 0.01f, 0.0f)) reset();
-		ImGui::PopItemWidth();
+		if (ImGui::Checkbox("Sample Direct Light", &scene.sampleLight)) reset();
+		if (scene.nLights > 0)
+		{
+			if (ImGui::Checkbox("Manual Sample Portion", &scene.lightEnvUniformSample))
+				reset();
+		}
+
+		if (scene.lightEnvUniformSample)
+			if (ImGui::DragFloat("LightPortion", &scene.envStrength, 0.01f, 0.0f, 1.0f)) reset();
 
 		const char* tones[] = { "None", "Reinhard", "Filmic", "ACES" };
 		if (ImGui::Combo("ToneMapping", &toneMapping, tones, IM_ARRAYSIZE(tones)))
 		{
-			postShader.set1i("toneMapping", toneMapping);
+			postShader->set1i("toneMapping", toneMapping);
 		}
 
 		if (ImGui::Button("Save Image"))

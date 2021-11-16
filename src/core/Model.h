@@ -85,3 +85,5 @@ private:
 
 	static glm::mat4 constRot;
 };
+
+using ModelPtr = std::shared_ptr<Model>;
