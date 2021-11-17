@@ -12,31 +12,30 @@ SceneBuffer Scene::genBuffers()
 
 	uint32_t offIndVertex = 0;
 	uint32_t offIndMaterial = 0;
-	for (const auto obj : objects)
+	for (const auto& object : objects)
 	{
-		const auto [object, matIndex] = obj;
-
 		auto modelMat = object->materials();
 		materials.insert(materials.end(), modelMat.begin(), modelMat.end());
 
-		auto meshes = object->meshes();
-		for (const auto& m : meshes)
+		auto model = object->modelMatrix();
+		glm::mat3 modelInv = glm::transpose(glm::inverse(model));
+
+		for (const auto& meshInstance : object->meshInstances())
 		{
-			std::vector<uint32_t> transIndices(m.indices.size());
-			std::transform(m.indices.begin(), m.indices.end(), transIndices.begin(),
-				[offIndVertex](uint32_t x) { return (x + offIndVertex); }
-			);
-			//std::cout << (m.matTexIndex >> 16) << " " << (m.matTexIndex & 0xffff) + offIndMaterial << "\n";
-			std::vector<uint32_t> meshMat(m.indices.size() / 3, m.matTexIndex + offIndMaterial);
+			const auto& meshData = meshInstance->meshData;
+			for (const auto& v : meshData->positions)
+				vertices.push_back(model * glm::vec4(v, 1.0f));
+			for (const auto& n : meshData->normals)
+				normals.push_back(glm::normalize(modelInv * n));
+			for (const auto& t : meshData->texcoords)
+				texCoords.push_back(t);
+			for (const auto& i : meshData->indices)
+				indices.push_back(i + offIndVertex);
+			for (size_t i = 0; i < meshData->indices.size() / 3; i++)
+				matTexIndices.push_back(offIndMaterial + (meshInstance->texIndex << 16 | meshInstance->matIndex));
 
-			vertices.insert(vertices.end(), m.vertices.begin(), m.vertices.end());
-			normals.insert(normals.end(), m.normals.begin(), m.normals.end());
-			texCoords.insert(texCoords.end(), m.texCoords.begin(), m.texCoords.end());
-			indices.insert(indices.end(), transIndices.begin(), transIndices.end());
-			matTexIndices.insert(matTexIndices.end(), meshMat.begin(), meshMat.end());
-
-			offIndVertex += m.vertices.size();
-			objPrimCount += m.indices.size() / 3;
+			offIndVertex += meshData->positions.size();
+			objPrimCount += meshData->indices.size() / 3;
 		}
 		offIndMaterial += modelMat.size();
 	}
@@ -44,21 +43,19 @@ SceneBuffer Scene::genBuffers()
 	for (const auto light : lights)
 	{
 		auto lt = light.first;
-		auto meshes = lt->meshes();
+		auto model = lt->modelMatrix();
+		glm::mat3 modelInv = glm::transpose(glm::inverse(model));
 
-		for (const auto& m : meshes)
+		for (const auto& meshInstance : lt->meshInstances())
 		{
-			std::vector<uint32_t> transIndices(m.indices.size());
-			std::transform(m.indices.begin(), m.indices.end(), transIndices.begin(),
-				[offIndVertex](uint32_t x) { return (x + offIndVertex); }
-			);
-
-			vertices.insert(vertices.end(), m.vertices.begin(), m.vertices.end());
-			normals.insert(normals.end(), m.normals.begin(), m.normals.end());
-			//texCoords.insert(texCoords.end(), m.texCoords.begin(), m.texCoords.end());
-			indices.insert(indices.end(), transIndices.begin(), transIndices.end());
-
-			offIndVertex += m.vertices.size();
+			const auto& meshData = meshInstance->meshData;
+			for (const auto& v : meshData->positions)
+				vertices.push_back(model * glm::vec4(v, 1.0f));
+			for (const auto& n : meshData->normals)
+				normals.push_back(glm::normalize(modelInv * n));
+			for (const auto& i : meshData->indices)
+				indices.push_back(offIndVertex + i);
+			offIndVertex += meshData->positions.size();
 		}
 	}
 
@@ -81,25 +78,12 @@ SceneBuffer Scene::genBuffers()
 	ret.textures = Texture2DArray::createFromImages(Resource::getAllImages(), TextureFormat::Col3x32f);
 	ret.texUVScale = TextureBuffered::createFromVector(ret.textures->texScales(), TextureFormat::Col2x32f);
 
-	/*vertexBuf->allocate(vertices, GL_RGB32F);
-	normalBuf->allocate(normals, GL_RGB32F);
-	texCoordBuf->allocate(texCoords, GL_RG32F);
-	indexBuf->allocate(indices, GL_R32I);
-	boundBuf->allocate(bvhBuf.bounds, GL_RGB32F);
-	hitTableBuf->allocate(bvhBuf.hitTable, GL_RGB32I);
-	matTexIndexBuf->allocate(matTexIndices, GL_R32I);
-	materialBuf->allocate(materials, GL_RGB32F);
-	lightPowerBuf->allocate(lightPower, GL_RGB32F);
-	lightAliasBuf->allocate(lightAlias, GL_R32I);
-	lightProbBuf->allocate(lightProb, GL_R32F);
-	uvScaleBuf->allocate(uvScale, GL_RG32F);*/
-
 	return ret;
 }
 
-void Scene::addObject(std::shared_ptr<Model> object, uint8_t matIndex)
+void Scene::addObject(ModelInstancePtr object)
 {
-	objects.push_back({ object, matIndex });
+	objects.push_back(object);
 }
 
 void Scene::addMaterial(const Material& material)
@@ -107,7 +91,7 @@ void Scene::addMaterial(const Material& material)
 	materials.push_back(material);
 }
 
-void Scene::addLight(std::shared_ptr<Model> light, const glm::vec3& radiance)
+void Scene::addLight(ModelInstancePtr light, const glm::vec3& radiance)
 {
 	lights.push_back({ light, radiance });
 }
@@ -129,8 +113,25 @@ std::tuple<std::vector<glm::vec3>, std::vector<int32_t>, std::vector<float>> Sce
 	for (const auto light : lights)
 	{
 		const auto [lt, radiance] = light;
+		auto model = lt->modelMatrix();
 
-		auto meshes = lt->meshes();
+		for (const auto& meshInstance : lt->meshInstances())
+		{
+			const auto& meshData = meshInstance->meshData;
+			for (size_t i = 0; i < meshData->indices.size() / 3; i++)
+			{
+				glm::vec3 va(model * glm::vec4(meshData->positions[meshData->indices[i * 3 + 0]], 1.0f));
+				glm::vec3 vb(model * glm::vec4(meshData->positions[meshData->indices[i * 3 + 1]], 1.0f));
+				glm::vec3 vc(model * glm::vec4(meshData->positions[meshData->indices[i * 3 + 2]], 1.0f));
+
+				float area = 0.5f * glm::length(glm::cross(vc - va, vb - va));
+				glm::vec3 p = radiance * area * glm::pi<float>() * 2.0f;
+				power.push_back(p);
+				pdf.push_back(brightness(p));
+				lightSum += brightness(p);
+			}
+		}
+		/*auto meshes = lt->meshes();
 		for (const auto& m : meshes)
 		{
 			int fCount = m.indices.size() / 3;
@@ -146,7 +147,7 @@ std::tuple<std::vector<glm::vec3>, std::vector<int32_t>, std::vector<float>> Sce
 				pdf.push_back(brightness(p));
 				lightSum += brightness(p);
 			}
-		}
+		}*/
 	}
 
 	nLights = pdf.size();

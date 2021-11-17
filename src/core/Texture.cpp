@@ -119,6 +119,8 @@ Texture2DArray::Texture2DArray(const std::vector<ImagePtr>& images, TextureForma
 	mMaxWidth = 0, mMaxHeight = 0;
 	for (const auto& img : images)
 	{
+		if (img == nullptr)
+			continue;
 		mMaxWidth = std::max(mMaxWidth, img->width());
 		mMaxHeight = std::max(mMaxHeight, img->height());
 	}
@@ -129,6 +131,8 @@ Texture2DArray::Texture2DArray(const std::vector<ImagePtr>& images, TextureForma
 	for (int i = 0; i < images.size(); i++)
 	{
 		const auto& img = images[i];
+		if (img == nullptr)
+			continue;
 		glTextureSubImage3D(mId, 0, 0, 0, i,
 		img->width(), img->height(), 1, GL_RGB, GL_UNSIGNED_BYTE, img->data());
 	}
@@ -142,6 +146,8 @@ Texture2DArray::Texture2DArray(const std::vector<ImagePtr>& images, TextureForma
 	for (int i = 0; i < images.size(); i++)
 	{
 		const auto& img = images[i];
+		if (img == nullptr)
+			continue;
 		mTexScales[i] = glm::vec2(img->width(), img->height()) / glm::vec2(mMaxWidth, mMaxHeight);
 	}
 }

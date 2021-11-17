@@ -1,9 +1,5 @@
 #pragma once
 
-#include <iostream>
-#include <memory>
-#include <vector>
-
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -11,8 +7,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "Texture.h"
-#include "Resource.h"
+#include "Shader.h"
+#include "Mesh.h"
+
+class ModelInstance;
+using ModelInstancePtr = std::shared_ptr<ModelInstance>;
 
 struct Material
 {
@@ -32,25 +31,13 @@ struct Material
 	int type;
 };
 
-struct Mesh
-{
-	std::vector<glm::vec3> vertices;
-	std::vector<glm::vec3> normals;
-	std::vector<glm::vec2> texCoords;
-	std::vector<uint32_t> indices;
-	uint32_t matTexIndex;
-};
-
-class Model
+class ModelInstance
 {
 public:
-	Model(const char* filePath, const glm::vec3& pos = glm::vec3(0.0f), const glm::vec3& scale = glm::vec3(1.0f), const glm::vec3& rotation = glm::vec3(0.0f));
-	~Model();
+	friend class Resource;
 
-	bool loadModel(const char* filePath);
-
-	std::vector<Mesh> meshes() const { return m_Meshes; }
-	std::vector<Material> materials() const { return m_Materials; }
+	ModelInstance() = default;
+	~ModelInstance();
 
 	void setPos(glm::vec3 pos);
 	void setPos(float x, float y, float z);
@@ -62,28 +49,29 @@ public:
 	void setRotation(glm::vec3 angle);
 	void setRotation(float yaw, float pitch, float roll);
 	void setSize(float size);
+	void setName(const std::string& name) { mName = name; }
+	void setPath(const File::path& path) { mPath = path; }
 
-	glm::vec3 pos() const { return m_Pos; }
-	glm::vec3 scale() const { return m_Scale; }
-	glm::vec3 rotation() const { return m_Rotation; }
+	glm::vec3 pos() const { return mPos; }
+	glm::vec3 scale() const { return mScale; }
+	glm::vec3 rotation() const { return mRotation; }
 	glm::mat4 modelMatrix() const;
-	std::string name() const { return m_Name; }
+	std::string name() const { return mName; }
+	File::path path() const { return mPath; }
+
+	std::vector<MeshInstancePtr>& meshInstances() { return mMeshInstances; }
+	std::vector<Material>& materials() { return mMaterials; }
+
+	ModelInstancePtr copy() const;
 
 private:
-	void processNode(aiNode* node, const aiScene* scene);
-	Mesh processMesh(aiMesh* mesh, const aiScene* scene);
+	std::vector<MeshInstancePtr> mMeshInstances;
+	std::vector<Material> mMaterials;
+	glm::vec3 mPos = glm::vec3(0.0f);
+	glm::vec3 mScale = glm::vec3(1.0f);
+	glm::vec3 mRotation = glm::vec3(0.0f);
+	glm::mat4 mRotMatrix = glm::mat4(1.0f);
 
-private:
-	std::vector<Mesh> m_Meshes;
-	std::vector<Material> m_Materials;
-	glm::vec3 m_Pos = glm::vec3(0.0f);
-	glm::vec3 m_Scale = glm::vec3(1.0f);
-	glm::vec3 m_Rotation = glm::vec3(0.0f);
-	glm::mat4 m_RotMatrix = glm::mat4(1.0f);
-	bool m_LoadedFromFile = false;
-	std::string m_Name;
-
-	static glm::mat4 constRot;
+	std::string mName;
+	File::path mPath;
 };
-
-using ModelPtr = std::shared_ptr<Model>;
