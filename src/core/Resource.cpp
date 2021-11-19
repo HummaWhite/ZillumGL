@@ -113,8 +113,8 @@ ModelInstancePtr Resource::openModelInstance(const File::path& path,
 
 MeshInstancePtr Resource::createNewMeshInstance(aiMesh* mesh, const aiScene* scene, const File::path& instancePath)
 {
-	Error::line("\t[Mesh]\tnVertices = " + std::to_string(mesh->mNumVertices) +
-		", nFaces = " + std::to_string(mesh->mNumFaces));
+	Error::line("\t[Mesh nVertices = " + std::to_string(mesh->mNumVertices) +
+		", nFaces = " + std::to_string(mesh->mNumFaces) + "]");
 
 	auto meshInstance = MeshInstance::create();
 	auto meshData = MeshData::create();
@@ -148,7 +148,7 @@ MeshInstancePtr Resource::createNewMeshInstance(aiMesh* mesh, const aiScene* sce
 			std::filesystem::path path(str.C_Str());
 			if (!path.is_absolute())
 				path = instancePath / path;
-			Error::line("\t\t[Albedo texture] " + path.generic_string());
+			Error::line("\t\t[Albedo texture " + path.generic_string() + "]");
 			meshInstance->texIndex = Resource::addImage(path, ImageDataType::Int8);
 		}
 	}

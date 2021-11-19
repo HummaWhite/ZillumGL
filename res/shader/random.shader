@@ -45,11 +45,8 @@ vec2 randBox()
 	return vec2(rand(), rand());
 }
 
-uniform int sampleDim;
-uniform usamplerBuffer sobolSeq;
-uniform sampler2D noiseTex;
-uniform int sampleNum;
-uniform int sampler;
+uniform usamplerBuffer uSobolSeq;
+uniform int uSampler;
 
 #define Sampler int
 
@@ -58,9 +55,9 @@ uint sampleSeed;
 
 float sample1D(inout Sampler s)
 {
-	if (sampler == 0) return rand();
+	if (uSampler == 0) return rand();
 	
-	uint r = texelFetch(sobolSeq, sampleOffset + s).r;
+	uint r = texelFetch(uSobolSeq, sampleOffset + s).r;
 	r ^= sampleSeed;
 	sampleSeed = hash(sampleSeed);
 	s++;

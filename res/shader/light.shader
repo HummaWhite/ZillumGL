@@ -1,26 +1,27 @@
 @type lib
 @include envMap.shader
 
-uniform samplerBuffer lightPower;
-uniform isamplerBuffer lightAlias;
-uniform samplerBuffer lightProb;
-uniform int nLights;
-uniform float lightSum;
-uniform bool lightEnvUniformSample;
-uniform float lightSamplePortion;
+uniform samplerBuffer uLightPower;
+uniform isamplerBuffer uLightAlias;
+uniform samplerBuffer uLightProb;
+uniform int uNumLights;
+uniform float uLightSum;
+uniform bool uLightEnvUniformSample;
+uniform float uLightSamplePortion;
+uniform int uObjPrimCount;
 
 vec3 lightGetRadiance(int id, vec3 x, vec3 Wo)
 {
-	int triId = id + objPrimCount;
+	int triId = id + uObjPrimCount;
 	SurfaceInfo sInfo = triangleSurfaceInfo(triId, x);
 	if (dot(Wo, sInfo.norm) <= 0.0) return vec3(0.0);
 
-	return texelFetch(lightPower, id).rgb / triangleArea(triId) * 0.5f * PiInv;
+	return texelFetch(uLightPower, id).rgb / triangleArea(triId) * 0.5f * PiInv;
 }
 
 float lightPdfLi(int id, vec3 x, vec3 y)
 {
-	int triId = id + objPrimCount;
+	int triId = id + uObjPrimCount;
 	vec3 N = triangleSurfaceInfo(triId, y).norm;
 	vec3 yx = normalize(x - y);
 	float cosTheta = absDot(N, yx);
@@ -33,19 +34,19 @@ LightSample lightSampleOne(vec3 x, vec4 u)
 {
 	LightSample ret;
 
-	int cx = int(float(nLights) * u.x);
+	int cx = int(float(uNumLights) * u.x);
 	float cy = u.y;
 
-	int id = (cy < texelFetch(lightProb, cx).r) ? cx : texelFetch(lightAlias, cx).r;
-	int triId = id + objPrimCount;
+	int id = (cy < texelFetch(uLightProb, cx).r) ? cx : texelFetch(uLightAlias, cx).r;
+	int triId = id + uObjPrimCount;
 
-	int ia = texelFetch(indices, triId * 3 + 0).r;
-	int ib = texelFetch(indices, triId * 3 + 1).r;
-	int ic = texelFetch(indices, triId * 3 + 2).r;
+	int ia = texelFetch(uIndices, triId * 3 + 0).r;
+	int ib = texelFetch(uIndices, triId * 3 + 1).r;
+	int ic = texelFetch(uIndices, triId * 3 + 2).r;
 
-	vec3 a = texelFetch(vertices, ia).xyz;
-	vec3 b = texelFetch(vertices, ib).xyz;
-	vec3 c = texelFetch(vertices, ic).xyz;
+	vec3 a = texelFetch(uVertices, ia).xyz;
+	vec3 b = texelFetch(uVertices, ib).xyz;
+	vec3 c = texelFetch(uVertices, ic).xyz;
 
 	vec3 y = sampleTriangleUniform(a, b, c, u.zw);
 	vec3 Wi = normalize(y - x);
@@ -65,7 +66,7 @@ LightSample lightSampleOne(vec3 x, vec4 u)
 
 	vec3 weight = lightGetRadiance(id, y, -Wi);
 
-	float pdfSample = dot(texelFetch(lightPower, id).rgb, BRIGHTNESS) / lightSum;
+	float pdfSample = dot(texelFetch(uLightPower, id).rgb, BRIGHTNESS) / uLightSum;
 	pdf *= pdfSample;
 	return lightSample(Wi, weight / pdf, pdf);
 }
@@ -74,8 +75,8 @@ LightSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
 {
 	float pdfSampleLight = 0.0;
 
-	if (nLights > 0)
-		pdfSampleLight = lightEnvUniformSample ? lightSamplePortion : lightSum / (lightSum + envSum);
+	if (uNumLights > 0)
+		pdfSampleLight = uLightEnvUniformSample ? uLightSamplePortion : uLightSum / (uLightSum + uEnvSum);
 
 	bool sampleLight = ud < pdfSampleLight;
 	float pdfSelect = sampleLight ? pdfSampleLight : 1.0 - pdfSampleLight;
@@ -88,12 +89,12 @@ LightSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
 
 float pdfSelectLight(int id)
 {
-	float fstPdf = dot(texelFetch(lightPower, id).rgb, BRIGHTNESS) / lightSum;
-	float sndPdf = lightEnvUniformSample ? lightSamplePortion : lightSum / (lightSum + envSum);
+	float fstPdf = dot(texelFetch(uLightPower, id).rgb, BRIGHTNESS) / uLightSum;
+	float sndPdf = uLightEnvUniformSample ? uLightSamplePortion : uLightSum / (uLightSum + uEnvSum);
 	return fstPdf * sndPdf;
 }
 
 float pdfSelectEnv()
 {
-	return lightEnvUniformSample ? (1.0 - lightSamplePortion) : envSum / (lightSum + envSum);
+	return uLightEnvUniformSample ? (1.0 - uLightSamplePortion) : uEnvSum / (uLightSum + uEnvSum);
 }

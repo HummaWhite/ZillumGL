@@ -62,48 +62,10 @@ SceneBuffer Scene::genBuffers()
 	BVH bvh(vertices, indices, bvhBuildMethod);
 	auto bvhBuf = bvh.build();
 
-	auto [lightPower, lightAlias, lightProb] = genLightTable();
+	Error::log("Scene", "generating light sampling table");
 
-	ret.vertex = TextureBuffered::createFromVector(vertices, TextureFormat::Col3x32f);
-	ret.normal = TextureBuffered::createFromVector(normals, TextureFormat::Col3x32f);
-	ret.texCoord = TextureBuffered::createFromVector(texCoords, TextureFormat::Col2x32f);
-	ret.index = TextureBuffered::createFromVector(indices, TextureFormat::Col1x32i);
-	ret.bound = TextureBuffered::createFromVector(bvhBuf.bounds, TextureFormat::Col3x32f);
-	ret.hitTable = TextureBuffered::createFromVector(bvhBuf.hitTable, TextureFormat::Col3x32i);
-	ret.matTexIndex = TextureBuffered::createFromVector(matTexIndices, TextureFormat::Col1x32i);
-	ret.material = TextureBuffered::createFromVector(materials, TextureFormat::Col3x32f);
-	ret.lightPower = TextureBuffered::createFromVector(lightPower, TextureFormat::Col3x32f);
-	ret.lightAlias = TextureBuffered::createFromVector(lightAlias, TextureFormat::Col1x32i);
-	ret.lightProb = TextureBuffered::createFromVector(lightProb, TextureFormat::Col1x32f);
-	ret.textures = Texture2DArray::createFromImages(Resource::getAllImages(), TextureFormat::Col3x32f);
-	ret.texUVScale = TextureBuffered::createFromVector(ret.textures->texScales(), TextureFormat::Col2x32f);
-
-	return ret;
-}
-
-void Scene::addObject(ModelInstancePtr object)
-{
-	objects.push_back(object);
-}
-
-void Scene::addMaterial(const Material& material)
-{
-	materials.push_back(material);
-}
-
-void Scene::addLight(ModelInstancePtr light, const glm::vec3& radiance)
-{
-	lights.push_back({ light, radiance });
-}
-
-std::tuple<std::vector<glm::vec3>, std::vector<int32_t>, std::vector<float>> Scene::genLightTable()
-{
-	typedef std::pair<int, float> Element;
-
-	std::vector<glm::vec3> power;
-	std::vector<int32_t> alias;
+	std::vector<glm::vec3> lightPower;
 	std::vector<float> pdf;
-	lightSum = 0.0f;
 
 	auto brightness = [](const glm::vec3& v) -> float
 	{
@@ -126,71 +88,43 @@ std::tuple<std::vector<glm::vec3>, std::vector<int32_t>, std::vector<float>> Sce
 
 				float area = 0.5f * glm::length(glm::cross(vc - va, vb - va));
 				glm::vec3 p = radiance * area * glm::pi<float>() * 2.0f;
-				power.push_back(p);
+				lightPower.push_back(p);
 				pdf.push_back(brightness(p));
-				lightSum += brightness(p);
+				lightSumPdf += brightness(p);
 			}
 		}
-		/*auto meshes = lt->meshes();
-		for (const auto& m : meshes)
-		{
-			int fCount = m.indices.size() / 3;
-			for (int i = 0; i < fCount; i++)
-			{
-				glm::vec3 va = m.vertices[m.indices[i * 3 + 0]];
-				glm::vec3 vb = m.vertices[m.indices[i * 3 + 1]];
-				glm::vec3 vc = m.vertices[m.indices[i * 3 + 2]];
-
-				float area = 0.5f * glm::length(glm::cross(vc - va, vb - va));
-				glm::vec3 p = radiance * area * glm::pi<float>() * 2.0f;
-				power.push_back(p);
-				pdf.push_back(brightness(p));
-				lightSum += brightness(p);
-			}
-		}*/
 	}
+	auto [lightAlias, lightProb] = AliasTable::build<int32_t>(pdf);
 
-	nLights = pdf.size();
-	float sumInv = nLights / lightSum;
-	alias.resize(nLights);
+	ret.vertex = TextureBuffered::createFromVector(vertices, TextureFormat::Col3x32f);
+	ret.normal = TextureBuffered::createFromVector(normals, TextureFormat::Col3x32f);
+	ret.texCoord = TextureBuffered::createFromVector(texCoords, TextureFormat::Col2x32f);
+	ret.index = TextureBuffered::createFromVector(indices, TextureFormat::Col1x32i);
+	ret.bound = TextureBuffered::createFromVector(bvhBuf.bounds, TextureFormat::Col3x32f);
+	ret.hitTable = TextureBuffered::createFromVector(bvhBuf.hitTable, TextureFormat::Col3x32i);
+	ret.matTexIndex = TextureBuffered::createFromVector(matTexIndices, TextureFormat::Col1x32i);
+	ret.material = TextureBuffered::createFromVector(materials, TextureFormat::Col3x32f);
+	ret.lightPower = TextureBuffered::createFromVector(lightPower, TextureFormat::Col3x32f);
+	ret.lightAlias = TextureBuffered::createFromVector(lightAlias, TextureFormat::Col1x32i);
+	ret.lightProb = TextureBuffered::createFromVector(lightProb, TextureFormat::Col1x32f);
+	ret.textures = Texture2DArray::createFromImages(Resource::getAllImages(), TextureFormat::Col3x32f);
+	ret.texUVScale = TextureBuffered::createFromVector(ret.textures->texScales(), TextureFormat::Col2x32f);
 
-	Element* greater = new Element[nLights * 2], * lesser = new Element[nLights * 2];
-	int gTop = 0, lTop = 0;
+	Error::log("Scene", "generating buffers for GL");
+	return ret;
+}
 
-	for (int i = 0; i < nLights; i++)
-	{
-		pdf[i] *= sumInv;
-		(pdf[i] < 1.0f ? lesser[lTop++] : greater[gTop++]) = Element(i, pdf[i]);
-	}
+void Scene::addObject(ModelInstancePtr object)
+{
+	objects.push_back(object);
+}
 
-	while (gTop != 0 && lTop != 0)
-	{
-		auto [l, pl] = lesser[--lTop];
-		auto [g, pg] = greater[--gTop];
+void Scene::addMaterial(const Material& material)
+{
+	materials.push_back(material);
+}
 
-		alias[l] = g;
-		pdf[l] = pl;
-
-		pg += pl - 1.0f;
-		(pg < 1.0f ? lesser[lTop++] : greater[gTop++]) = Element(g, pg);
-	}
-
-	while (gTop != 0)
-	{
-		auto [g, pg] = greater[--gTop];
-		alias[g] = g;
-		pdf[g] = pg;
-	}
-
-	while (lTop != 0)
-	{
-		auto [l, pl] = lesser[--lTop];
-		alias[l] = l;
-		pdf[l] = pl;
-	}
-
-	delete[] greater;
-	delete[] lesser;
-
-	return { power, alias, pdf };
+void Scene::addLight(ModelInstancePtr light, const glm::vec3& radiance)
+{
+	lights.push_back({ light, radiance });
 }

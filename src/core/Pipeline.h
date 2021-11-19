@@ -78,6 +78,7 @@ public:
 	void setFaceToDraw(DrawFace faceToDraw) { mFaceToDraw = faceToDraw; }
 	void setPolygonMode(PolygonMode polyMode) { mPolyMode = polyMode; }
 	void setClearBuffer(BufferBit bits) { mClearBuffer = bits; }
+	void setViewport(int x, int y, int width, int height);
 
 	void clear(const glm::vec4& color);
 	void draw(VertexBufferPtr vertices, VertexArrayPtr interpretor, ShaderPtr shader);
@@ -97,4 +98,6 @@ private:
 	BufferBit mClearBuffer;
 
 	FrameBufferPtr mFrameBuffer;
+
+	glm::ivec4 mViewport;
 };

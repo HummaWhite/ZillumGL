@@ -12,9 +12,6 @@ const uint MetalWorkflow = 0;
 const uint Dielectric = 1;
 const uint ThinDielectric = 2;
 
-uniform samplerBuffer materials;
-uniform isamplerBuffer matTypes;
-
 struct BsdfSample
 {
 	vec3 Wi;

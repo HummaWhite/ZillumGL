@@ -15,8 +15,8 @@ void main()
 in vec2 texCoord;
 out vec4 FragColor;
 
-uniform sampler2D frameBuffer;
-uniform int toneMapping;
+uniform sampler2D uFrame;
+uniform int uToneMapper;
 
 vec3 reinhard(vec3 color)
 {
@@ -48,13 +48,13 @@ vec3 ACES(vec3 color)
 void main()
 {
 	vec2 texPos = texCoord;
-	vec3 color = texture(frameBuffer, texPos).rgb;
+	vec3 color = texture(uFrame, texPos).rgb;
 	
 	// 如果不Clamp掉负值会出现奇怪的问题
 	color = clamp(color, 0.0, 1e8);
 
 	vec3 mapped = color;
-	switch (toneMapping)
+	switch (uToneMapper)
 	{
 	case 1:
 		mapped = reinhard(color);

@@ -22,8 +22,8 @@ Shader::Shader(const File::path& path, const glm::ivec3& computeSize, const std:
 	inclRec[fullPath] = true;
 
 	file.open(fullPath);
-	Error::check(file.is_open(), "[Shader]\tunable to load file");
-	Error::log("Shader", "loading [" + fullPath.generic_string() + "] ...");
+	Error::line("[Shader " + fullPath.generic_string() + "]");
+	Error::check(file.is_open(), "\t[Error unable to load file]");
 
 	loadShader(file, text, ShaderLoadStat::None, inclRec);
 
@@ -110,7 +110,8 @@ int Shader::getUniformLocation(const char* name) const
 {
 	GLint location = glGetUniformLocation(mId, name);
 	if (location == -1)
-		std::cout << "[Error]\t\tUnable to locate the uniform [" << name << "] in shader: " << mName << std::endl;
+		std::cout << "[Unable to locate the uniform \"" << name << "\" in shader: " <<
+		mName << "]" << std::endl;
 	return location;
 }
 
@@ -118,7 +119,8 @@ GLint Shader::getUniformLocation(GLuint programID, const char* name)
 {
 	GLint location = glGetUniformLocation(programID, name);
 	if (location == -1)
-		std::cout << "[Error]\t\tUnable to locate uniform [" << name << "] in shader numbered: " << programID << std::endl;
+		std::cout << "[Unable to locate uniform \"" << name << "\" in shader numbered: " << programID <<
+		"]" << std::endl;
 	return location;
 }
 
@@ -143,25 +145,25 @@ void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat sta
 				ssline >> arg;
 				if (arg == "vertex")
 				{
-					Error::check(stat != ShaderLoadStat::Vertex, "[Shader] redef");
+					Error::check(stat != ShaderLoadStat::Vertex, "Redefinition");
 					stat = ShaderLoadStat::Vertex;
 					text.vertex += "\n#version 450\n" + mExtensionStr;
 				}
 				else if (arg == "fragment")
 				{
-					Error::check(stat != ShaderLoadStat::Fragment, "[Shader] redef");
+					Error::check(stat != ShaderLoadStat::Fragment, "Redefinition");
 					stat = ShaderLoadStat::Fragment;
 					text.fragment += "\n#version 450\n" + mExtensionStr;
 				}
 				else if (arg == "geometry")
 				{
-					Error::check(stat != ShaderLoadStat::Geometry, "[Shader] redef");
+					Error::check(stat != ShaderLoadStat::Geometry, "Redefinition");
 					stat = ShaderLoadStat::Geometry;
 					text.geometry += "\n#version 450\n" + mExtensionStr;
 				}
 				else if (arg == "compute")
 				{
-					Error::check(stat != ShaderLoadStat::Compute, "[Shader] redef");
+					Error::check(stat != ShaderLoadStat::Compute, "Redefinition");
 					stat = ShaderLoadStat::Compute;
 					mType = ShaderType::Compute;
 					text.compute += "\n#version 450\n" + mExtensionStr +
@@ -170,7 +172,8 @@ void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat sta
 						", local_size_z = " + std::to_string(mComputeGroupSize.z) +
 						") in;\n";
 				}
-				else if (arg != "lib") throw "included file is not a lib";
+				else
+					Error::check(arg == "lib", "Included file is not a lib");
 				continue;
 			}
 			else if (macro == "@include")
@@ -181,8 +184,7 @@ void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat sta
 
 				std::fstream file;
 				file.open(incPath);
-				Error::check(file.is_open(), "[Shader] included file not found");
-
+				Error::check(file.is_open(), "Included file not found");
 				loadShader(file, text, stat, inclRec);
 				inclRec[incPath] = true;
 				continue;
@@ -216,17 +218,40 @@ void Shader::compileShader(const ShaderText& text)
 
 	mId = glCreateProgram();
 
+	std::string tempPath = "temp/" + mName;
+	if (text.vertex != "")
+	{
+		std::ofstream txt(ShaderDefaultDir / (tempPath + "_vs.glsl"));
+		txt << text.vertex;
+	}
+	if (text.fragment != "")
+	{
+		std::ofstream txt(ShaderDefaultDir / (tempPath + "_fs.glsl"));
+		txt << text.fragment;
+	}
+	if (text.geometry != "")
+	{
+		std::ofstream txt(ShaderDefaultDir / (tempPath + "_gs.glsl"));
+		txt << text.geometry;
+	}
+	if (text.compute != "")
+	{
+		std::ofstream txt(ShaderDefaultDir / (tempPath + "_cs.glsl"));
+		txt << text.compute;
+	}
+
 	for (int i = 0; i < 4; i++)
 	{
 		if (shaders[i]->length() == 0) continue;
 		auto shader = glCreateShader(shaderType[i]);
 		glShaderSource(shader, 1, &shaderText[i], nullptr);
+		Error::line("\t[Compiling " + shaderName[i] + " shader]");
 		glCompileShader(shader);
 		checkShaderCompileInfo(shader, shaderName[i]);
 		glAttachShader(mId, shader);
 		glDeleteShader(shader);
 	}
-
+	Error::line("\t[Linking shaders]");
 	glLinkProgram(mId);
 	checkShaderLinkInfo();
 }
@@ -241,6 +266,7 @@ void Shader::checkShaderCompileInfo(uint32_t shaderId, const std::string& name)
 		char info[length];
 		glGetShaderInfoLog(shaderId, length, nullptr, info);
 		Error::log("Shader", std::string(info));
+		Error::exit("failed to compile shader");
 	}
 }
 
@@ -254,5 +280,6 @@ void Shader::checkShaderLinkInfo()
 		char info[length];
 		glGetProgramInfoLog(mId, length, nullptr, info);
 		Error::log("Shader", std::string(info));
+		Error::exit("failed to compile shader");
 	}
 }

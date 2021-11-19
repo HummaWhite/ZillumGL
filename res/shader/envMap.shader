@@ -1,12 +1,11 @@
 @type lib
 @include math.shader
 
-uniform sampler2D envMap;
-uniform isampler2D envAliasTable;
-uniform sampler2D envAliasProb;
-uniform float envSum;
-uniform bool sampleLight;
-uniform float envRotation;
+uniform sampler2D uEnvMap;
+uniform isampler2D uEnvAliasTable;
+uniform sampler2D uEnvAliasProb;
+uniform float uEnvSum;
+uniform float uEnvRotation;
 
 const vec3 BRIGHTNESS = vec3(0.299, 0.587, 0.114);
 
@@ -30,44 +29,44 @@ const LightSample INVALID_LIGHT_SAMPLE = lightSample(vec3(0.0), vec3(0.0), 0.0);
 
 vec3 envGetRadiance(vec3 Wi)
 {
-	Wi = rotateZ(Wi, -envRotation);
-	return texture(envMap, sphereToPlane(Wi)).rgb;
+	Wi = rotateZ(Wi, -uEnvRotation);
+	return texture(uEnvMap, sphereToPlane(Wi)).rgb;
 }
 
 float envGetPortion(vec3 Wi)
 {
-	return dot(envGetRadiance(Wi), BRIGHTNESS) / envSum;
+	return dot(envGetRadiance(Wi), BRIGHTNESS) / uEnvSum;
 }
 
 float envPdfLi(vec3 Wi)
 {
-	if (envSum == 0.0) return 0.0;
-	vec2 size = vec2(textureSize(envMap, 0).xy);
+	if (uEnvSum == 0.0) return 0.0;
+	vec2 size = vec2(textureSize(uEnvMap, 0).xy);
 	return envGetPortion(Wi) * size.x * size.y * 0.5f * square(PiInv);// / sqrt(1.0 - square(Wi.z));
 }
 
 vec4 envImportanceSample(vec4 u)
 {
-	ivec2 size = textureSize(envMap, 0).xy;
+	ivec2 size = textureSize(uEnvMap, 0).xy;
 	int w = size.x, h = size.y;
 
 	int rx = int(float(h) * u.x);
 	float ry = u.y;
 
 	ivec2 rTex = ivec2(w, rx);
-	int row = (ry < texelFetch(envAliasProb, rTex, 0).r) ? rx : texelFetch(envAliasTable, rTex, 0).r;
+	int row = (ry < texelFetch(uEnvAliasProb, rTex, 0).r) ? rx : texelFetch(uEnvAliasTable, rTex, 0).r;
 
 	int cx = int(float(w) * u.z);
 	float cy = u.w;
 
 	ivec2 cTex = ivec2(cx, row);
-	int col = (cy < texelFetch(envAliasProb, cTex, 0).r) ? cx : texelFetch(envAliasTable, cTex, 0).r;
+	int col = (cy < texelFetch(uEnvAliasProb, cTex, 0).r) ? cx : texelFetch(uEnvAliasTable, cTex, 0).r;
 
 	float sinTheta = sin(Pi * (float(row) + 0.5) / float(h));
 	vec2 uv = vec2(float(col) + 0.5, float(row + 0.5)) / vec2(float(w), float(h));
 	vec3 Wi = planeToSphere(uv);
 	//float pdf = envPdfLi(Wi);
-	Wi = rotateZ(Wi, envRotation);
+	Wi = rotateZ(Wi, uEnvRotation);
 	float pdf = envGetPortion(Wi) * size.x* size.y * 0.5f * square(PiInv);
 	return vec4(Wi, pdf);
 }

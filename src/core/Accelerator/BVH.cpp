@@ -1,4 +1,5 @@
 #include "BVH.h"
+#include "../../util/Error.h"
 
 typedef std::pair<int, int> RadixSortElement;
 
@@ -75,7 +76,7 @@ void radixSort16(PrimInfo* a, int count, int dim)
 
 PackedBVH BVH::build()
 {
-	std::cout << "[BVH]\t\tCPU Building ...  ";
+	Error::log("BVH", "building by CPU");
 	primInfo.resize(indices.size() / 3);
 	treeSize = primInfo.size() * 2 - 1;
 	bounds.resize(treeSize);
@@ -93,7 +94,7 @@ PackedBVH BVH::build()
 	}
 
 	build(0, bound, 0, primInfo.size() - 1);
-	std::cout << "[" << vertices.size() << " vertices, " << primInfo.size() << " triangles, " << bounds.size() << " nodes]\n";
+	std::cout << "\t[" << vertices.size() << " vertices, " << primInfo.size() << " triangles, " << bounds.size() << " nodes]\n";
 
 	buildHitTable();
 	return PackedBVH{ bounds, hitTable };

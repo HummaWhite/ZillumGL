@@ -34,11 +34,6 @@ int EngineBase::run()
     return this->m_ErrorOccured ? -1 : 0;
 }
 
-void EngineBase::setViewport(int x, int y, int width, int height)
-{
-    glViewport(x, y, width, height);
-}
-
 void EngineBase::setupGL(int width, int height, bool border)
 {
     glfwInit();
@@ -47,20 +42,17 @@ void EngineBase::setupGL(int width, int height, bool border)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_DECORATED, border);
 
-    m_Window = glfwCreateWindow(width, height, "OpenGL-Try", NULL, NULL);
-    if (m_Window == NULL)
-    {
-        this->error("Failed to create GLFW window");
-        return;
-    }
+    int nMonitors;
+    auto monitors = glfwGetMonitors(&nMonitors);
+
+    Error::log("Physical monitors", "found " + std::to_string(nMonitors));
+
+    m_Window = glfwCreateWindow(width, height, "Zillum", nullptr, nullptr);
+    Error::check(m_Window != nullptr, "[GLFW failed to create window]");
     glfwMakeContextCurrent(m_Window);
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-    {
-        this->error("Failed to initialize GLAD");
-    }
-
-    this->setViewport(0, 0, m_WindowWidth, m_WindowHeight);
+        Error::exit("failed to init GLAD");
 
     glfwSetInputMode(this->window(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 }
@@ -73,13 +65,6 @@ void EngineBase::swapBuffers()
 void EngineBase::display()
 {
     glfwPollEvents();
-}
-
-void EngineBase::error(const char* errString)
-{
-    std::cout << "Engine Error: " << errString << std::endl;
-    this->setTerminateStatus(true);
-    this->m_ErrorOccured = true;
 }
 
 void EngineBase::resizeWindow(int width, int height)

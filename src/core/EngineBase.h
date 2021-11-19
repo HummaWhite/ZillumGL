@@ -36,7 +36,6 @@ public:
 	~EngineBase();
 
 	int run();
-	void setViewport(int x, int y, int width, int height);
 	void resizeWindow(int width, int height);
 
 	int windowWidth() const { return m_WindowWidth; }
@@ -56,7 +55,6 @@ public:
 
 	void swapBuffers();
 	void display();
-	void error(const char* errString);
 
 private:
 	void setupGL(int width, int height, bool border);

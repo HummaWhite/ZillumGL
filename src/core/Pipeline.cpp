@@ -1,6 +1,12 @@
 #include "Pipeline.h"
 #include "../util/Error.h"
 
+void Pipeline::setViewport(int x, int y, int width, int height)
+{
+	glViewport(x, y, width, height);
+	mViewport = { x, y, width, height };
+}
+
 void Pipeline::clear(const glm::vec4& color)
 {
 	glClearColor(color.x, color.y, color.z, color.w);

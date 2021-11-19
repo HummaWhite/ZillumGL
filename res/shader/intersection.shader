@@ -1,18 +1,13 @@
 @type lib
 @include math.shader
 
-uniform samplerBuffer vertices;
-uniform samplerBuffer normals;
-uniform samplerBuffer texCoords;
-uniform isamplerBuffer indices;
-uniform samplerBuffer bounds;
-uniform isamplerBuffer matTexIndices;
-uniform isamplerBuffer hitTable;
-uniform int bvhSize;
-uniform int objPrimCount;
-uniform int nTextures;
-uniform sampler2DArray textures;
-uniform samplerBuffer texUVScale;
+uniform samplerBuffer uVertices;
+uniform samplerBuffer uNormals;
+uniform samplerBuffer uTexCoords;
+uniform isamplerBuffer uIndices;
+uniform samplerBuffer uBounds;
+uniform isamplerBuffer uHitTable;
+uniform int uBvhSize;
 
 struct Ray
 {
@@ -94,38 +89,38 @@ HitInfo intersectTriangle(vec3 a, vec3 b, vec3 c, Ray ray)
 
 HitInfo intersectTriangle(int id, Ray ray)
 {
-	int ia = texelFetch(indices, id * 3 + 0).r;
-	int ib = texelFetch(indices, id * 3 + 1).r;
-	int ic = texelFetch(indices, id * 3 + 2).r;
+	int ia = texelFetch(uIndices, id * 3 + 0).r;
+	int ib = texelFetch(uIndices, id * 3 + 1).r;
+	int ic = texelFetch(uIndices, id * 3 + 2).r;
 
-	vec3 a = texelFetch(vertices, ia).xyz;
-	vec3 b = texelFetch(vertices, ib).xyz;
-	vec3 c = texelFetch(vertices, ic).xyz;
+	vec3 a = texelFetch(uVertices, ia).xyz;
+	vec3 b = texelFetch(uVertices, ib).xyz;
+	vec3 c = texelFetch(uVertices, ic).xyz;
 	return intersectTriangle(a, b, c, ray);
 }
 
 vec3 triangleRandomPoint(int id, vec2 u)
 {
-	int ia = texelFetch(indices, id * 3 + 0).r;
-	int ib = texelFetch(indices, id * 3 + 1).r;
-	int ic = texelFetch(indices, id * 3 + 2).r;
+	int ia = texelFetch(uIndices, id * 3 + 0).r;
+	int ib = texelFetch(uIndices, id * 3 + 1).r;
+	int ic = texelFetch(uIndices, id * 3 + 2).r;
 
-	vec3 a = texelFetch(vertices, ia).xyz;
-	vec3 b = texelFetch(vertices, ib).xyz;
-	vec3 c = texelFetch(vertices, ic).xyz;
+	vec3 a = texelFetch(uVertices, ia).xyz;
+	vec3 b = texelFetch(uVertices, ib).xyz;
+	vec3 c = texelFetch(uVertices, ic).xyz;
 
 	return sampleTriangleUniform(a, b, c, u);
 }
 
 float triangleArea(int id)
 {
-	int ia = texelFetch(indices, id * 3 + 0).r;
-	int ib = texelFetch(indices, id * 3 + 1).r;
-	int ic = texelFetch(indices, id * 3 + 2).r;
+	int ia = texelFetch(uIndices, id * 3 + 0).r;
+	int ib = texelFetch(uIndices, id * 3 + 1).r;
+	int ic = texelFetch(uIndices, id * 3 + 2).r;
 
-	vec3 a = texelFetch(vertices, ia).xyz;
-	vec3 b = texelFetch(vertices, ib).xyz;
-	vec3 c = texelFetch(vertices, ic).xyz;
+	vec3 a = texelFetch(uVertices, ia).xyz;
+	vec3 b = texelFetch(uVertices, ib).xyz;
+	vec3 c = texelFetch(uVertices, ic).xyz;
 
 	return triangleArea(a, b, c);
 }
@@ -134,21 +129,21 @@ SurfaceInfo triangleSurfaceInfo(int id, vec3 p)
 {
 	SurfaceInfo ret;
 
-	int ia = texelFetch(indices, id * 3 + 0).r;
-	int ib = texelFetch(indices, id * 3 + 1).r;
-	int ic = texelFetch(indices, id * 3 + 2).r;
+	int ia = texelFetch(uIndices, id * 3 + 0).r;
+	int ib = texelFetch(uIndices, id * 3 + 1).r;
+	int ic = texelFetch(uIndices, id * 3 + 2).r;
 
-	vec3 a = texelFetch(vertices, ia).xyz;
-	vec3 b = texelFetch(vertices, ib).xyz;
-	vec3 c = texelFetch(vertices, ic).xyz;
+	vec3 a = texelFetch(uVertices, ia).xyz;
+	vec3 b = texelFetch(uVertices, ib).xyz;
+	vec3 c = texelFetch(uVertices, ic).xyz;
 
-	vec3 na = texelFetch(normals, ia).xyz;
-	vec3 nb = texelFetch(normals, ib).xyz;
-	vec3 nc = texelFetch(normals, ic).xyz;
+	vec3 na = texelFetch(uNormals, ia).xyz;
+	vec3 nb = texelFetch(uNormals, ib).xyz;
+	vec3 nc = texelFetch(uNormals, ic).xyz;
 
-	vec2 ta = texelFetch(texCoords, ia).xy;
-	vec2 tb = texelFetch(texCoords, ib).xy;
-	vec2 tc = texelFetch(texCoords, ic).xy;
+	vec2 ta = texelFetch(uTexCoords, ia).xy;
+	vec2 tb = texelFetch(uTexCoords, ib).xy;
+	vec2 tc = texelFetch(uTexCoords, ic).xy;
 
 	vec3 pa = a - p;
 	vec3 pb = b - p;
@@ -168,8 +163,8 @@ SurfaceInfo triangleSurfaceInfo(int id, vec3 p)
 bool boxHit(int id, Ray ray, out float tMin)
 {
 	float tMax;
-	vec3 pMin = texelFetch(bounds, id * 2 + 0).xyz;
-	vec3 pMax = texelFetch(bounds, id * 2 + 1).xyz;
+	vec3 pMin = texelFetch(uBounds, id * 2 + 0).xyz;
+	vec3 pMax = texelFetch(uBounds, id * 2 + 1).xyz;
 
 	const float eps = 1e-6;
 	vec3 o = ray.ori;
@@ -274,19 +269,19 @@ float maxDepth = 0.0;
 
 bool bvhTest(Ray ray, float dist)
 {
-	int tableOffset = cubemapFace(-ray.dir) * bvhSize;
+	int tableOffset = cubemapFace(-ray.dir) * uBvhSize;
 	int k = 0;
 
-	while (k != bvhSize)
+	while (k != uBvhSize)
 	{
-		int nodeIndex = texelFetch(hitTable, tableOffset + k).r;
-		int primIndex = texelFetch(hitTable, tableOffset + k).g;
+		int nodeIndex = texelFetch(uHitTable, tableOffset + k).r;
+		int primIndex = texelFetch(uHitTable, tableOffset + k).g;
 
 		float boxDist;
 		bool bHit = boxHit(nodeIndex, ray, boxDist);
 		if (!bHit || (bHit && boxDist > dist))
 		{
-			k = texelFetch(hitTable, tableOffset + k).b;
+			k = texelFetch(uHitTable, tableOffset + k).b;
 			continue;
 		}
 
@@ -304,19 +299,19 @@ int bvhHit(Ray ray, out float dist)
 {
 	dist = 1e8;
 	int closest = -1;
-	int tableOffset = cubemapFace(-ray.dir) * bvhSize;
+	int tableOffset = cubemapFace(-ray.dir) * uBvhSize;
 
 	int k = 0;
-	while (k != bvhSize)
+	while (k != uBvhSize)
 	{
-		int nodeIndex = texelFetch(hitTable, tableOffset + k).r;
-		int primIndex = texelFetch(hitTable, tableOffset + k).g;
+		int nodeIndex = texelFetch(uHitTable, tableOffset + k).r;
+		int primIndex = texelFetch(uHitTable, tableOffset + k).g;
 
 		float boxDist;
 		bool bHit = boxHit(nodeIndex, ray, boxDist);
 		if (!bHit || (bHit && boxDist > dist))
 		{
-			k = texelFetch(hitTable, tableOffset + k).b;
+			k = texelFetch(uHitTable, tableOffset + k).b;
 			continue;
 		}
 

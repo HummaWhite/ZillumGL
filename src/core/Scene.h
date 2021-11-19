@@ -4,6 +4,8 @@
 #include "EnvironmentMap.h"
 #include "Texture.h"
 #include "Model.h"
+#include "Resource.h"
+#include "Math/AliasTable.h"
 
 struct SceneBuffer
 {
@@ -27,28 +29,15 @@ class Scene
 public:
 	SceneBuffer genBuffers();
 
-	void addObject(std::shared_ptr<Model> object, uint8_t matIndex);
+	void addObject(ModelInstancePtr object);
 	void addMaterial(const Material& material);
-	void addLight(std::shared_ptr<Model> light, const glm::vec3& radiance);
+	void addLight(ModelInstancePtr light, const glm::vec3& radiance);
 
-	template<typename... Args>
-	void addOneObject(Args &&...args)
-	{
-		addObject(std::make_shared<Model>(args...), 0);
-	}
-
-	template<typename... Args>
-	void addOneLight(Args &&...args, const glm::vec3& radiance)
-	{
-		addLight(std::make_shared<Model>(args...), radiance);
-	}
-
-private:
-	std::tuple<std::vector<glm::vec3>, std::vector<int32_t>, std::vector<float>> genLightTable();
+	int numLights() const { return lights.size(); }
 
 public:
-	std::vector<std::pair<std::shared_ptr<Model>, uint8_t>> objects;
-	std::vector<std::pair<std::shared_ptr<Model>, glm::vec3>> lights;
+	std::vector<ModelInstancePtr> objects;
+	std::vector<std::pair<ModelInstancePtr, glm::vec3>> lights;
 	std::vector<Material> materials;
 	
 	EnvironmentMapPtr envMap;
@@ -56,8 +45,7 @@ public:
 	bool lightEnvUniformSample = false;
 	float envStrength = 0.5f;
 	float envRotation = 0.0f;
-	float lightSum = 0.0f;
-	int nLights;
+	float lightSumPdf = 0.0f;
 
 	int objPrimCount = 0;
 
