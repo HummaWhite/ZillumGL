@@ -30,7 +30,7 @@ private:
 
 	VertexBufferPtr screenVB;
 
-	ShaderPtr rayTestShader, postShader;
+	ShaderPtr rayTraceShader, postShader;
 
 	Camera camera = Camera({ 0.0f, -3.0f, 2.0f });
 
@@ -67,8 +67,6 @@ private:
 	bool aoMode = false;
 	glm::vec3 aoCoef = glm::vec3(1.0f);
 	int maxBounce = 3;
-	bool roulette = false;
-	float rouletteProb = 0.6f;
 	int envMapIndex;
 	bool pause = false;
 

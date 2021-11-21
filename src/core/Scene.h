@@ -33,8 +33,6 @@ public:
 	void addMaterial(const Material& material);
 	void addLight(ModelInstancePtr light, const glm::vec3& radiance);
 
-	int numLights() const { return lights.size(); }
-
 public:
 	std::vector<ModelInstancePtr> objects;
 	std::vector<std::pair<ModelInstancePtr, glm::vec3>> lights;
@@ -46,6 +44,7 @@ public:
 	float envStrength = 0.5f;
 	float envRotation = 0.0f;
 	float lightSumPdf = 0.0f;
+	int nLightTriangles = 0;
 
 	int objPrimCount = 0;
 

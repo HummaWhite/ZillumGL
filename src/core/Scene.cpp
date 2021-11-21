@@ -92,6 +92,7 @@ SceneBuffer Scene::genBuffers()
 				pdf.push_back(brightness(p));
 				lightSumPdf += brightness(p);
 			}
+			nLightTriangles += meshData->indices.size() / 3;
 		}
 	}
 	auto [lightAlias, lightProb] = AliasTable::build<int32_t>(pdf);

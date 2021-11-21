@@ -76,20 +76,7 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 			float ud = sample1D(s);
 			vec4 us = sample4D(s);
 
-			if (type == Dielectric)
-			{
-				if (!approximateDelta(roughness))
-				{
-					LightSample samp = sampleLightAndEnv(P, ud, us);
-					if (samp.pdf > 0.0)
-					{
-						float bsdfPdf = dielectricPdf(Wo, samp.Wi, N, metIor, roughness);
-						float weight = biHeuristic(samp.pdf, bsdfPdf);
-						result += dielectricBsdf(Wo, samp.Wi, N, albedo, metIor, roughness) * beta * satDot(N, samp.Wi) * samp.coef * weight;
-					}
-				}
-			}
-			else if (type == MetalWorkflow)
+			if (type == MetalWorkflow)
 			{
 				LightSample samp = sampleLightAndEnv(P, ud, us);
 				if (samp.pdf > 0.0)
@@ -97,6 +84,16 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 					float bsdfPdf = metalWorkflowPdf(Wo, samp.Wi, N, metIor, roughness * roughness);
 					float weight = biHeuristic(samp.pdf, bsdfPdf);
 					result += metalWorkflowBsdf(Wo, samp.Wi, N, albedo, metIor, roughness) * beta * satDot(N, samp.Wi) * samp.coef * weight;
+				}
+			}
+			else if (type == Dielectric && !approximateDelta(roughness))
+			{
+				LightSample samp = sampleLightAndEnv(P, ud, us);
+				if (samp.pdf > 0.0)
+				{
+					float bsdfPdf = dielectricPdf(Wo, samp.Wi, N, metIor, roughness);
+					float weight = biHeuristic(samp.pdf, bsdfPdf);
+					result += dielectricBsdf(Wo, samp.Wi, N, albedo, metIor, roughness) * beta * satDot(N, samp.Wi) * samp.coef * weight;
 				}
 			}
 		}
@@ -134,38 +131,32 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 
 		SceneHitInfo scHitInfo = sceneHit(newRay);
 		int primId = scHitInfo.primId;
+		int lightId = primId - uObjPrimCount;
 		float dist = scHitInfo.dist;
 		vec3 hitPoint = rayPoint(newRay, dist);
-
-		if (primId == -1 || primId >= uObjPrimCount)
+		
+		if (primId == -1)
 		{
-			int lightId = primId - uObjPrimCount;
-			vec3 radiance = (primId == -1) ? envGetRadiance(Wi) : lightGetRadiance(lightId, hitPoint, -Wi);
+			vec3 radiance = envGetRadiance(Wi);
 			float weight = 1.0;
-
-			if (uSampleLight)
+			if (uSampleLight && !deltaBsdf)
 			{
-				if (!deltaBsdf)
-				{
-					if (primId == -1)
-					{
-						float envPdf = envPdfLi(Wi) * pdfSelectEnv();
-						if (envPdf <= 0.0) weight = 0.0;
-						else weight = biHeuristic(bsdfPdf, envPdf);
-					}
-					else
-					{
-						float lightPdf = lightPdfLi(lightId, P, hitPoint) * pdfSelectLight(lightId);
-						if (lightPdf <= 0.0) weight = 0.0;
-						else weight = biHeuristic(bsdfPdf, lightPdf);
-					}
-				}
-				result += radiance * beta * weight;
+				float envPdf = envPdfLi(Wi) * pdfSelectEnv();
+				weight = (envPdf <= 0.0) ? 0.0 : biHeuristic(bsdfPdf, envPdf);
 			}
-			else
+			result += radiance * beta * weight;
+			break;
+		}
+		else if (lightId >= 0)
+		{
+			vec3 radiance = lightGetRadiance(lightId, hitPoint, -Wi);
+			float weight = 1.0;
+			if (uSampleLight && !deltaBsdf)
 			{
-				result += radiance * beta;
+				float lightPdf = lightPdfLi(lightId, P, hitPoint) * pdfSelectLight(lightId);
+				weight = (lightPdf <= 0.0) ? 0.0 : biHeuristic(bsdfPdf, lightPdf);
 			}
+			//result += radiance * beta * weight;
 			break;
 		}
 

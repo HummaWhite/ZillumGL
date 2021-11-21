@@ -4,7 +4,7 @@
 uniform samplerBuffer uLightPower;
 uniform isamplerBuffer uLightAlias;
 uniform samplerBuffer uLightProb;
-uniform int uNumLights;
+uniform int uNumLightTriangles;
 uniform float uLightSum;
 uniform bool uLightEnvUniformSample;
 uniform float uLightSamplePortion;
@@ -34,7 +34,7 @@ LightSample lightSampleOne(vec3 x, vec4 u)
 {
 	LightSample ret;
 
-	int cx = int(float(uNumLights) * u.x);
+	int cx = int(float(uNumLightTriangles) * u.x);
 	float cy = u.y;
 
 	int id = (cy < texelFetch(uLightProb, cx).r) ? cx : texelFetch(uLightAlias, cx).r;
@@ -75,7 +75,7 @@ LightSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
 {
 	float pdfSampleLight = 0.0;
 
-	if (uNumLights > 0)
+	if (uNumLightTriangles > 0)
 		pdfSampleLight = uLightEnvUniformSample ? uLightSamplePortion : uLightSum / (uLightSum + uEnvSum);
 
 	bool sampleLight = ud < pdfSampleLight;
