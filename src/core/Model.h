@@ -15,7 +15,7 @@ using ModelInstancePtr = std::shared_ptr<ModelInstance>;
 
 struct Material
 {
-	enum { MetalWorkflow = 0, Dielectric };
+	enum { MetalWorkflow = 0, Dielectric = 1, ThinDielectric = 2 };
 
 	Material() : Material(glm::vec3(1.0f)) {}
 

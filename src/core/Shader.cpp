@@ -8,7 +8,7 @@
 #include <cstring>
 #include <string>
 
-const File::path ShaderDefaultDir = File::absolute(File::path("res/shader"));
+const File::path ShaderDefaultDir = File::absolute(File::path("src/shader"));
 
 Shader::Shader(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr) :
 	mType(ShaderType::Graphics), mName(path.generic_string()), mExtensionStr(extensionStr),
@@ -265,7 +265,7 @@ void Shader::checkShaderCompileInfo(uint32_t shaderId, const std::string& name)
 		const int length = 8192;
 		char info[length];
 		glGetShaderInfoLog(shaderId, length, nullptr, info);
-		Error::log("Shader", std::string(info));
+		Error::bracketLine<0>("Shader " + std::string(info));
 		Error::exit("failed to compile shader");
 	}
 }
@@ -279,7 +279,7 @@ void Shader::checkShaderLinkInfo()
 		const int length = 8192;
 		char info[length];
 		glGetProgramInfoLog(mId, length, nullptr, info);
-		Error::log("Shader", std::string(info));
+		Error::bracketLine<0>("Shader " + std::string(info));
 		Error::exit("failed to compile shader");
 	}
 }

@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<scene name="testScene">
+	<integrator type="path">
+		<maxBounce value="3" />
+		<size width="1600" height="900" />
+		<toneMapping type="filmic" />
+	</integrator>
+	<sampler type="sobol">
+		<numSamples value="256" />
+	</sampler>
+	<camera type="thinLens">
+		<position value="0 -8 3" />
+		<angle value="0 0 0" />
+		<fov value="45" />
+		<lensRadius value="0" />
+		<focalDistance value="1" />
+	</camera>
+	<modelInstances>
+		<!--         Set your own model paths and properties here
+		<modelInstance path="res/model/square.obj" name="square" type="object">
+			<transform translate="0 0 0" scale="100 100 1" rotate="0 0 0" />
+			<material type="default" />
+		</modelInstance>
+		<modelInstance path="res/model/teapot/Mesh003.obj" name="teapotBody" type="object">
+			<transform translate="0 0 0" scale="1 1 1" rotate="0 0 0" />
+			<material type="metalWorkflow">
+				<albedo value="1 1 1" />
+				<metallic value="1" />
+				<roughness value="0.1" />
+			</material>
+		</modelInstance>
+		<modelInstance path="res/model/teapot/Mesh004.obj" name="teapotCap" type="object">
+			<transform translate="0 0 0" scale="1 1 1" rotate="0 0 0" />
+			<material type="dielectric">
+				<tint value="1 1 1" />
+				<ior value="1.5" />
+				<roughness value="0.0" />
+			</material>
+		</modelInstance>
+		<modelInstance path="res/model/square.obj" name="areaLight" type="light">
+			<transform translate="0 0 10" scale="2 2 1" rotate="180 0 0" />
+			<radiance value="20 20 20" />
+		</modelInstance>
+		-->
+	</modelInstances>
+	<!-- Set environment map path here
+	<envMap path="res/texture/none.png" />
+	-->
+</scene>

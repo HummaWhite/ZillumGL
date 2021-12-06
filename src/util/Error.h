@@ -7,18 +7,18 @@
 
 NAMESPACE_BEGIN(Error)
 
+template<int NTabs>
+void bracketLine(const std::string& msg)
+{
+    static_assert(NTabs >= 0);
+    for (int i = 0; i < NTabs; i++)
+        std::cerr << "\t";
+    std::cerr << "[" << msg << "]" << std::endl;
+}
+
 static void line(const std::string& msg)
 {
     std::cerr << msg << std::endl;
-}
-
-static void log(const std::string& pri, const std::string& snd = "")
-{
-    std::cerr << "[" << pri;
-    if (snd == "")
-        std::cerr << "]\n";
-    else
-        std::cerr << " " << snd << "]" << std::endl;
 }
 
 static void exit(const std::string& msg = "")

@@ -1,18 +1,30 @@
 # ZillumGL
 
-使用GLSL Compute Shader实现的渲染器
+Renderer (path tracer) based on GLSL Compute Shader. [CPU version here](https://github.com/HummaWhite/Zillum)
 
-Renderer based on GLSL Compute Shader
+#### Features
 
-CPU版本 | CPU version: https://github.com/HummaWhite/Zillum
+- Path tracer with Next Event Estimation (MIS weighted)
+- GPU accelerated
+- Multiple-threaded BVH from [*Implementing a practical rendering system using GLSL*](https://cs.uwaterloo.ca/~thachisu/tdf2015.pdf#:~:text=Multiple-threaded%20BVH%20%28MTBVH%29%20%E2%80%A2Prepare%20threaded%20BVHs%20for%20six,%E2%80%A2Need%20to%20add%20only%20%E2%80%9Chit%E2%80%9D%20and%20%E2%80%9Cmiss%E2%80%9D%20links)
+- Environment map importance sampling
+- Interactive, with adjustable material and camera
+- A simple Sobol sampler
+- XML scene description
 
-在这里可以看到关于在这个渲染器上使用伪随机序列和低差异序列采样的渲染效果的对比视频
+#### Working on
 
-I made a video to compare rendering efficiency between pseudorandom sampler and low discrepancy sampler with this renderer, you can watch it here: https://youtu.be/pjfcD8fYfQg
+- A scene editor
+- Real-time preview
 
-还有最近终于添加纹理之后渲染Gallery这个场景的视频
+#### Demo videos
 
-And another video about rendering the Gallery scene after I added texture importing to this renderer recently: https://youtu.be/TGbwSyqxKvY
+- [Low discrepancy sampler test](https://youtu.be/pjfcD8fYfQg)
+- [Rendering the Gallery with textures](https://youtu.be/TGbwSyqxKvY)
+- [Rendering a Utah Teapot](https://youtu.be/HNXanaqzhgQ)
+
+#### Demo pictures
+
 
 ![](https://raw.githubusercontent.com/HummaWhite/ZillumGL/main/pic/save1625201466.png)
 

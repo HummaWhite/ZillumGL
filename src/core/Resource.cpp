@@ -55,10 +55,10 @@ ModelInstancePtr Resource::createNewModelInstance(const File::path& path)
 		;
 	auto scene = importer.ReadFile(pathStr.c_str(), option);
 
-	Error::log("ModelInstance", "Loading: " + pathStr + " ...");
+	Error::bracketLine<0>("ModelInstance loading: " + pathStr + " ...");
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
-		Error::log("Assimp", std::string(importer.GetErrorString()));
+		Error::bracketLine<0>("Assimp " + std::string(importer.GetErrorString()));
 		return nullptr;
 	}
 

@@ -156,7 +156,7 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 				float lightPdf = lightPdfLi(lightId, P, hitPoint) * pdfSelectLight(lightId);
 				weight = (lightPdf <= 0.0) ? 0.0 : biHeuristic(bsdfPdf, lightPdf);
 			}
-			//result += radiance * beta * weight;
+			result += radiance * beta * weight;
 			break;
 		}
 

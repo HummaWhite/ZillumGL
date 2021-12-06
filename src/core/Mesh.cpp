@@ -28,7 +28,7 @@ void MeshData::render(PipelinePtr ctx, ShaderPtr shader)
 		return;
 	if (!mHasGLContext)
 	{
-		Error::log("Mesh", "the mesh has not generated GL context");
+		Error::bracketLine<0>("Mesh the mesh has not generated GL context");
 		return;
 	}
 	if (!mIndexBuffer)

@@ -17,7 +17,7 @@ void Pipeline::draw(VertexBufferPtr vertices, VertexArrayPtr interpretor, Shader
 {
 	if (vertices == nullptr || interpretor == nullptr)
 	{
-		Error::log("Renderer", "null pointer to vertex data or data interpretor");
+		Error::bracketLine<0>("Renderer null pointer to vertex data or data interpretor");
 		return;
 	}
 	shader->enable();
@@ -35,7 +35,7 @@ void Pipeline::drawIndexed(VertexBufferPtr vertices, VertexArrayPtr interpretor,
 {
 	if (vertices == nullptr || interpretor == nullptr || indices == nullptr)
 	{
-		Error::log("Renderer", "null pointer to vertex data or data interpretor");
+		Error::bracketLine<0>("Renderer null pointer to vertex data or data interpretor");
 		return;
 	}
 	shader->enable();
@@ -49,6 +49,13 @@ void Pipeline::drawIndexed(VertexBufferPtr vertices, VertexArrayPtr interpretor,
 	interpretor->unbind();
 }
 
+std::vector<uint8_t> Pipeline::readFramePixels()
+{
+	std::vector<uint8_t> ret(static_cast<size_t>(mViewport.z) * mViewport.w * 3);
+	glReadPixels(mViewport.x, mViewport.y, mViewport.z, mViewport.w, GL_RGB, GL_UNSIGNED_BYTE, ret.data());
+	return ret;
+}
+
 PipelinePtr Pipeline::create(const PipelineCreateInfo& createInfo)
 {
 	return std::make_shared<Pipeline>(createInfo);
@@ -58,7 +65,7 @@ void Pipeline::dispatchCompute(int xNum, int yNum, int zNum, ShaderPtr shader)
 {
 	if (!shader)
 	{
-		Error::log("Compute", "no shader used");
+		Error::bracketLine<0>("Compute no shader used");
 		return;
 	}
 	shader->enable();

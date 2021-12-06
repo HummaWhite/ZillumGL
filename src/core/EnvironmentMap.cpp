@@ -7,7 +7,7 @@
 
 EnvironmentMap::EnvironmentMap(const File::path& path)
 {
-	Error::log("EnvMap", "loading " + path.generic_string());
+	Error::bracketLine<0>("EnvMap loading " + path.generic_string());
 
 	auto image = Image::createFromFile(path, ImageDataType::Float32);
 	mEnvMap = Texture2D::createFromImage(image, TextureFormat::Col3x16f);
@@ -26,7 +26,7 @@ EnvironmentMap::EnvironmentMap(const File::path& path)
 		return (0.299f * (*p) + 0.587f * (*(p + 1)) + 0.114f * (*(p + 2)));
 	};
 
-	Error::log("EnvMap", "generating sample table");
+	Error::bracketLine<0>("EnvMap generating sample table");
 
 	size_t size = size_t(size_t(width) + 1) * height;
 

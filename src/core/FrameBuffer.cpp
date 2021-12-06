@@ -52,7 +52,7 @@ bool FrameBuffer::checkComplete()
 	GLenum status = glCheckNamedFramebufferStatus(mId, GL_FRAMEBUFFER);
 	if (status != GL_FRAMEBUFFER_COMPLETE)
 	{
-		Error::log("FrameBuffer", "not complete");
+		Error::bracketLine<0>("FrameBuffer not complete");
 		return false;
 	}
 	return true;

@@ -2,7 +2,7 @@
 
 #include <iostream>
 #include <Windows.h>
-#include "wglext.h"
+#include "../thirdparty/wglext.h"
 
 static bool WGLExtensionSupported(const char* extension_name)
 {

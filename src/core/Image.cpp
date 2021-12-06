@@ -20,7 +20,7 @@ ImagePtr Image::createFromFile(const File::path& path, ImageDataType type, int c
 
 	if (data == nullptr)
 	{
-		Error::log("Image", "Failed to load from file: " + path.generic_string());
+		Error::bracketLine<0>("Image Failed to load from file: " + path.generic_string());
 		return nullptr;
 	}
 	image->mDataType = type;

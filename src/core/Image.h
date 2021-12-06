@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../stb_image/stb_image.h"
-#include "../stb_image/stb_image_write.h"
+#include "../thirdparty/stb_image/stb_image.h"
+#include "../thirdparty/stb_image/stb_image_write.h"
 #include "../util/File.h"
 
 class Image;

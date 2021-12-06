@@ -5,9 +5,13 @@
 #include "Texture.h"
 #include "Model.h"
 #include "Resource.h"
+#include "Camera.h"
 #include "Math/AliasTable.h"
+#include "Sampler.h"
 
-struct SceneBuffer
+const std::string SceneConfigPath = "res/scene.xml";
+
+struct SceneGLContext
 {
 	TextureBufferedPtr vertex;
 	TextureBufferedPtr normal;
@@ -27,7 +31,10 @@ struct SceneBuffer
 class Scene
 {
 public:
-	SceneBuffer genBuffers();
+	void load();
+	void saveToFile(const File::path& path);
+
+	void createGLContext();
 
 	void addObject(ModelInstancePtr object);
 	void addMaterial(const Material& material);
@@ -41,12 +48,28 @@ public:
 	EnvironmentMapPtr envMap;
 	bool sampleLight = true;
 	bool lightEnvUniformSample = false;
-	float envStrength = 0.5f;
+	float lightPortion = 0.5f;
 	float envRotation = 0.0f;
 	float lightSumPdf = 0.0f;
 	int nLightTriangles = 0;
-
 	int objPrimCount = 0;
 
-	BVHSplitMethod bvhBuildMethod = BVHSplitMethod::SAH;
+	Camera camera;
+	float focalDist;
+	float lensRadius;
+	int toneMapping = 2;
+	
+	int filmWidth, filmHeight;
+
+	int sampler;
+	const int SampleNum = 131072;
+	const int SampleDim = 256;
+	TextureBufferedPtr sobolTex;
+	Texture2DPtr noiseTex;
+
+	bool aoMode;
+	int maxBounce;
+	glm::vec3 aoCoef = glm::vec3(1.0f);
+
+	SceneGLContext glContext;
 };
