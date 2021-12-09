@@ -1,14 +1,14 @@
 #include "PathTracer.h"
 
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_opengl3.h"
+#include <imgui/imgui.h>
+#include <imgui/imgui_impl_glfw.h>
+#include <imgui/imgui_impl_opengl3.h>
 
 #include <set>
 #include <map>
 
-const int WorkgroupSizeX = 32;
-const int WorkgroupSizeY = 48;
+const int WorkgroupSizeX = 48;
+const int WorkgroupSizeY = 32;
 
 const float ScreenCoord[] =
 {
@@ -289,8 +289,12 @@ void renderGUI()
 
 		if (scene.materials.size() > 0)
 		{
-			ImGui::SliderInt("Material", &uiMatIndex, 0, scene.materials.size() - 1);
-			rayTraceShader->set1i("uMatIndex", Settings::uiMatIndex);
+			if (ImGui::SliderInt("Material", &uiMatIndex, 0, scene.materials.size() - 1))
+			{
+				rayTraceShader->set1i("uMatIndex", Settings::uiMatIndex);
+				if (showBVH)
+					resetCounter();
+			}
 
 			auto& m = scene.materials[uiMatIndex];
 			const char* matTypes[] = { "MetalWorkflow", "Dielectric", "ThinDielectric" };
@@ -359,12 +363,12 @@ void renderGUI()
 
 		if (ImGui::Button("Save Image"))
 		{
-			auto buf = pipeline->readFramePixels();
-			auto viewport = pipeline->viewport();
-			int w = viewport.z;
-			int h = viewport.w;
 			std::string name = "screenshots/save" + std::to_string((long long)time(0)) + ".png";
-			stbi_write_png(name.c_str(), w, h, 3, buf.data() + w * (h - 1) * 3, -w * 3);
+			auto img = pipeline->readFramePixels();
+			stbi_flip_vertically_on_write(true);
+			stbi_write_png(name.c_str(), img->width(), img->height(), 3, img->data(), img->width() * 3);
+			Error::bracketLine<0>("Save " + name + " " + std::to_string(img->width()) + "x"
+				+ std::to_string(img->height()));
 		}
 
 		auto f = scene.camera.front();

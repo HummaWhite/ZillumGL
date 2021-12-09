@@ -84,7 +84,7 @@ public:
 	void draw(VertexBufferPtr vertices, VertexArrayPtr interpretor, ShaderPtr shader);
 	void drawIndexed(VertexBufferPtr vertices, VertexArrayPtr interpretor, VertexBufferPtr indices, ShaderPtr shader);
 
-	std::vector<uint8_t> readFramePixels();
+	ImagePtr readFramePixels();
 
 	glm::ivec4 viewport() const { return mViewport; }
 

@@ -49,11 +49,17 @@ void Pipeline::drawIndexed(VertexBufferPtr vertices, VertexArrayPtr interpretor,
 	interpretor->unbind();
 }
 
-std::vector<uint8_t> Pipeline::readFramePixels()
+ImagePtr Pipeline::readFramePixels()
 {
-	std::vector<uint8_t> ret(static_cast<size_t>(mViewport.z) * mViewport.w * 3);
-	glReadPixels(mViewport.x, mViewport.y, mViewport.z, mViewport.w, GL_RGB, GL_UNSIGNED_BYTE, ret.data());
-	return ret;
+	int width = (mViewport.z >> 2) << 2;
+	int height = mViewport.w;
+	size_t size = static_cast<size_t>(width) * height * 3;
+	auto data = new uint16_t[size];
+	auto image = Image::createEmpty(width, height, ImageDataType::Int8);
+	glReadPixels(mViewport.x, mViewport.y, width, height, GL_RGB, GL_UNSIGNED_BYTE, data);
+	memcpy(image->data(), data, size);
+	delete[] data;
+	return image;
 }
 
 PipelinePtr Pipeline::create(const PipelineCreateInfo& createInfo)

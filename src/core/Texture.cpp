@@ -83,6 +83,14 @@ Texture2D::Texture2D(TextureFormat format, int width, int height,
 	allocate(format, width, height, srcFormat, srcType, data);
 }
 
+ImagePtr Texture2D::readFromDevice()
+{
+	auto image = Image::createEmpty(mWidth, mHeight, ImageDataType::Int8);
+	size_t bufSize = static_cast<size_t>(mWidth) * mHeight * 3;
+	glGetTextureImage(mId, 0, GL_RGB, GL_UNSIGNED_BYTE, bufSize, image->data());
+	return image;
+}
+
 Texture2DPtr Texture2D::createEmpty(int width, int height, TextureFormat format)
 {
 	return std::make_shared<Texture2D>(width, height, format);

@@ -110,18 +110,16 @@ class Texture2D :
 	public Texture
 {
 public:
-	// Create empty 2D texture
 	Texture2D(int width, int height, TextureFormat format);
-	// Create 2D texture from Image
 	Texture2D(ImagePtr image, TextureFormat format);
-	// Create 2D texture from file
 	Texture2D(const File::path& path, TextureFormat format);
-	// Create 2D texture from memory
 	Texture2D(TextureFormat format, int width, int height,
 		TextureSourceFormat srcFormat, DataType srcType, const void* data);
 
 	int width() const { return mWidth; }
 	int height() const { return mHeight; }
+
+	ImagePtr readFromDevice();
 
 	static Texture2DPtr createEmpty(int width, int height, TextureFormat format);
 	static Texture2DPtr createFromImage(ImagePtr image, TextureFormat format);
@@ -141,7 +139,6 @@ class Texture2DArray :
 	public Texture
 {
 public:
-	// Create 2D texture array from an array of textures
 	Texture2DArray(const std::vector<ImagePtr>& images, TextureFormat format);
 
 	int maxWidth() const { return mMaxWidth; }

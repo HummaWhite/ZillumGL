@@ -17,7 +17,6 @@ FrameBuffer::FrameBuffer(int width, int height, RenderBufferFormat rbFormat,
 		auto tex = texToAttach[i];
 		GLenum attachment = GL_COLOR_ATTACHMENT0 + i;
 		glNamedFramebufferTexture(mId, attachment, tex->id(), 0);
-		//glNamedFramebufferTexture2DEXT(mId, attachment, GL_TEXTURE_2D, tex->id(), 0);
 		attachments.push_back(attachment);
 	}
 	glNamedFramebufferDrawBuffers(mId, attachments.size(), attachments.data());
