@@ -1,6 +1,6 @@
 # ZillumGL
 
-Renderer (path tracer) based on GLSL Compute Shader. [CPU version here](https://github.com/HummaWhite/Zillum)
+Renderer (path tracer) based on GLSL compute shader. [CPU version here](https://github.com/HummaWhite/Zillum)
 
 #### Features
 
@@ -10,7 +10,7 @@ Renderer (path tracer) based on GLSL Compute Shader. [CPU version here](https://
 - Environment map importance sampling
 - Interactive, with adjustable material and camera
 - A simple Sobol sampler
-- XML scene description
+- XML scene loading
 
 #### Working on
 
@@ -25,12 +25,13 @@ Renderer (path tracer) based on GLSL Compute Shader. [CPU version here](https://
 
 #### Demo pictures
 
+- [Link to all demo pictures](https://hummawhite.github.io/gallery)
 
-![](https://raw.githubusercontent.com/HummaWhite/ZillumGL/main/pic/save1625201466.png)
+![](https://hummawhite.github.io/img/sponza.png)
 
-![](https://raw.githubusercontent.com/HummaWhite/ZillumGL/main/pic/save1623561396.png)
+![](https://hummawhite.github.io/img/car1.png)
 
-![](https://raw.githubusercontent.com/HummaWhite/ZillumGL/main/pic/save1615882448.png)
+![](https://hummawhite.github.io/img/rungholt.png)
 
-![](https://raw.githubusercontent.com/HummaWhite/ZillumGL/main/pic/save1635135462.png)
+![](https://hummawhite.github.io/img/mitsuba2.png)
 
