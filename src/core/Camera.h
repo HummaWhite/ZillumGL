@@ -39,6 +39,7 @@ public:
 	glm::vec3 up() const { return mUp; }
 	float FOV() const { return mFOV; }
 	float aspect() const { return mAspect; }
+	glm::vec3 angle() const { return mAngle; }
 
 	glm::mat4 viewMatrix() const;
 	glm::mat4 viewMatrix(glm::vec3 focus) const;

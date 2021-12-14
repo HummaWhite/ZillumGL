@@ -250,157 +250,188 @@ void trace()
 
 void renderGUI()
 {
+	using namespace GLContext;
+	using namespace Settings;
+	using namespace SampleCounter;
+	using namespace Count;
+
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	ImGui::Begin("Control Panel");
+	if (ImGui::BeginMainMenuBar())
 	{
-		using namespace GLContext;
-		using namespace Settings;
-		using namespace SampleCounter;
-		using namespace Count;
-
-		ImGui::Text("BVH Nodes: %d\nTriangles: %d\nVertices: %d", boxCount, triangleCount, vertexCount);
-		if (ImGui::Checkbox("Show BVH", &showBVH))
+		if (ImGui::BeginMenu("File"))
 		{
-			rayTraceShader->set1i("uShowBVH", Settings::showBVH);
-			resetCounter();
-		}
+			if (ImGui::MenuItem("Open", "Ctrl+O"));
+			if (ImGui::MenuItem("Save", "Ctrl+S"));
 
-		if (ImGui::Checkbox("Ambient Occlusion", &scene.aoMode))
-		{
-			rayTraceShader->set1i("uAoMode", scene.aoMode);
-			if (!Settings::showBVH)
-				resetCounter();
-		}
-
-		if (scene.aoMode && ImGui::DragFloat3("AO Coef", glm::value_ptr(scene.aoCoef), 0.01f, 0.0f))
-		{
-			rayTraceShader->setVec3("uAoCoef", scene.aoCoef);
-			resetCounter();
-		}
-
-		if (ImGui::SliderInt("Max Bounces", &scene.maxBounce, 0, 60))
-		{
-			rayTraceShader->set1i("uMaxBounce", scene.maxBounce);
-			resetCounter();
-		}
-
-		if (scene.materials.size() > 0)
-		{
-			if (ImGui::SliderInt("Material", &uiMatIndex, 0, scene.materials.size() - 1))
+			if (ImGui::MenuItem("Save Image", "Ctrl+P"))
 			{
-				rayTraceShader->set1i("uMatIndex", Settings::uiMatIndex);
-				if (showBVH)
+				std::string name = "screenshots/save" + std::to_string((long long)time(0)) + ".png";
+				auto img = pipeline->readFramePixels();
+				stbi_flip_vertically_on_write(true);
+				stbi_write_png(name.c_str(), img->width(), img->height(), 3, img->data(), img->width() * 3);
+				Error::bracketLine<0>("Save " + name + " " + std::to_string(img->width()) + "x"
+					+ std::to_string(img->height()));
+			}
+
+			if (ImGui::MenuItem("Exit", "Esc"));
+			ImGui::EndMenu();
+		}
+
+		if (ImGui::BeginMenu("Settings"))
+		{
+			if (ImGui::MenuItem("Vertical Sync", nullptr, &verticalSync))
+				VerticalSyncStatus(verticalSync);
+
+			if (ImGui::MenuItem("Limit SPP", nullptr, &limitSpp) && curSpp > maxSpp)
+				resetCounter();
+			if (limitSpp)
+			{
+				//ImGui::SameLine();
+				//ImGui::SetNextItemWidth(-100);
+				if (ImGui::DragInt("Max SPP", &maxSpp, 1.0f, 0, 131072) && curSpp > maxSpp)
 					resetCounter();
 			}
 
-			auto& m = scene.materials[uiMatIndex];
-			const char* matTypes[] = { "MetalWorkflow", "Dielectric", "ThinDielectric" };
-			if (ImGui::Combo("Type", &m.type, matTypes, IM_ARRAYSIZE(matTypes)) ||
-				ImGui::ColorEdit3("Albedo", glm::value_ptr(m.albedo)) ||
-				ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
+			if (ImGui::MenuItem("Display BVH", nullptr, &showBVH))
 			{
-				scene.glContext.material->write(sizeof(Material) * uiMatIndex, sizeof(Material), &m);
+				rayTraceShader->set1i("uShowBVH", Settings::showBVH);
 				resetCounter();
 			}
 
-			if (m.type == Material::MetalWorkflow) m.metIor = glm::min<float>(m.metIor, 1.0f);
-
-			if (ImGui::SliderFloat(
-				m.type == Material::MetalWorkflow ? "Metallic" : "Ior",
-				&m.metIor, 0.0f,
-				m.type == Material::MetalWorkflow ? 1.0f : 4.0f))
+			if (ImGui::MenuItem("Ambient Occlusion", nullptr, &scene.aoMode))
 			{
-				scene.glContext.material->write(sizeof(Material) * uiMatIndex, sizeof(Material), &m);
+				rayTraceShader->set1i("uAoMode", scene.aoMode);
+				if (!Settings::showBVH)
+					resetCounter();
+			}
+
+			if (scene.aoMode && ImGui::DragFloat3("AO Coef", glm::value_ptr(scene.aoCoef), 0.01f, 0.0f))
+			{
+				rayTraceShader->setVec3("uAoCoef", scene.aoCoef);
 				resetCounter();
 			}
-		}
 
-		const char* samplers[] = { "Independent", "Sobol" };
-		if (ImGui::Combo("Sampler", &scene.sampler, samplers, IM_ARRAYSIZE(samplers)))
-		{
-			rayTraceShader->set1i("uSampler", scene.sampler);
-			resetCounter();
-		}
-
-		if (ImGui::Combo("EnvMap", &uiEnvIndex, envStr.c_str(), envList.size()))
-		{
-			scene.envMap = EnvironmentMap::create(envList[uiEnvIndex]);
-			rayTraceShader->setTexture("uEnvMap", scene.envMap->envMap(), 8);
-			rayTraceShader->setTexture("uEnvAliasTable", scene.envMap->aliasTable(), 9);
-			rayTraceShader->setTexture("uEnvAliasProb", scene.envMap->aliasProb(), 10);
-			rayTraceShader->set1f("uEnvSum", scene.envMap->sumPdf());
-			resetCounter();
-		}
-
-		if (ImGui::SliderAngle("EnvMap Rotation", &scene.envRotation, -180.0f, 180.0f) || 
-			ImGui::Checkbox("Sample Direct Light", &scene.sampleLight))
-		{
-			rayTraceShader->set1f("uEnvRotation", scene.envRotation);
-			rayTraceShader->set1i("uSampleLight", scene.sampleLight);
-			resetCounter();
-		}
-
-		if (scene.nLightTriangles > 0 &&
-			ImGui::Checkbox("Manual Sample Portion", &scene.lightEnvUniformSample))
-		{
-			rayTraceShader->set1i("uLightEnvUniformSample", scene.lightEnvUniformSample);
-			resetCounter();
-		}
-
-		if (scene.lightEnvUniformSample &&
-			ImGui::SliderFloat("LightPortion", &scene.lightPortion, 1e-4f, 1.0f - 1e-4f))
-		{
-			rayTraceShader->set1f("uLightSamplePortion", scene.lightPortion);
-			resetCounter();
-		}
-
-		const char* tones[] = { "None", "Reinhard", "Filmic", "ACES" };
-		if (ImGui::Combo("ToneMapping", &scene.toneMapping, tones, IM_ARRAYSIZE(tones)))
-			postShader->set1i("uToneMapper", scene.toneMapping);
-
-		if (ImGui::Button("Save Image"))
-		{
-			std::string name = "screenshots/save" + std::to_string((long long)time(0)) + ".png";
-			auto img = pipeline->readFramePixels();
-			stbi_flip_vertically_on_write(true);
-			stbi_write_png(name.c_str(), img->width(), img->height(), 3, img->data(), img->width() * 3);
-			Error::bracketLine<0>("Save " + name + " " + std::to_string(img->width()) + "x"
-				+ std::to_string(img->height()));
-		}
-
-		auto f = scene.camera.front();
-		ImGui::Text("Dir x: %f, y: %f, z: %f\n", f.x, f.y, f.z);
-
-		auto camPos = scene.camera.pos();
-		auto fov = scene.camera.FOV();
-		if (ImGui::DragFloat3("Position", (float*)&camPos, 0.1f) ||
-			ImGui::SliderFloat("FOV", &fov, 0.0f, 90.0f) ||
-			ImGui::DragFloat("FocalDistance", &scene.focalDist, 0.01f, 0.004f, 100.0f) ||
-			ImGui::DragFloat("LensRadius", &scene.lensRadius, 0.001f, 0.0f, 10.0f))
-		{
-			scene.camera.setPos(camPos);
-			scene.camera.setFOV(fov);
-			updateCameraUniforms();
-			resetCounter();
-		}
-
-		if (ImGui::Checkbox("Limit SPP", &limitSpp) && curSpp > maxSpp)
-			resetCounter();
-		if (limitSpp)
-		{
-			ImGui::SameLine();
-			ImGui::SetNextItemWidth(-100);
-			if (ImGui::DragInt("Max SPP", &maxSpp, 1.0f, 0, 131072) && curSpp > maxSpp)
+			if (ImGui::SliderInt("Max Bounces", &scene.maxBounce, 0, 60))
+			{
+				rayTraceShader->set1i("uMaxBounce", scene.maxBounce);
 				resetCounter();
+			}
+
+			const char* samplers[] = { "Independent", "Sobol" };
+			if (ImGui::Combo("Sampler", &scene.sampler, samplers, IM_ARRAYSIZE(samplers)))
+			{
+				rayTraceShader->set1i("uSampler", scene.sampler);
+				resetCounter();
+			}
+
+			if (ImGui::Checkbox("Sample Direct Light", &scene.sampleLight))
+			{
+				rayTraceShader->set1i("uSampleLight", scene.sampleLight);
+				resetCounter();
+			}
+
+			const char* tones[] = { "None", "Reinhard", "Filmic", "ACES" };
+			if (ImGui::Combo("ToneMapping", &scene.toneMapping, tones, IM_ARRAYSIZE(tones)))
+				postShader->set1i("uToneMapper", scene.toneMapping);
+
+			ImGui::EndMenu();
 		}
 
-		if (ImGui::Checkbox("Vertical Sync", &verticalSync))
-			VerticalSyncStatus(verticalSync);
+		if (ImGui::BeginMenu("Scene"))
+		{
+			if (scene.materials.size() > 0)
+			{
+				if (ImGui::SliderInt("Material", &uiMatIndex, 0, scene.materials.size() - 1))
+				{
+					rayTraceShader->set1i("uMatIndex", Settings::uiMatIndex);
+					if (showBVH)
+						resetCounter();
+				}
+
+				auto& m = scene.materials[uiMatIndex];
+				const char* matTypes[] = { "MetalWorkflow", "Dielectric", "ThinDielectric" };
+				if (ImGui::Combo("Type", &m.type, matTypes, IM_ARRAYSIZE(matTypes)) ||
+					ImGui::ColorEdit3("Albedo", glm::value_ptr(m.albedo)) ||
+					ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
+				{
+					scene.glContext.material->write(sizeof(Material) * uiMatIndex, sizeof(Material), &m);
+					resetCounter();
+				}
+
+				if (m.type == Material::MetalWorkflow) m.metIor = glm::min<float>(m.metIor, 1.0f);
+
+				if (ImGui::SliderFloat(
+					m.type == Material::MetalWorkflow ? "Metallic" : "Ior",
+					&m.metIor, 0.0f,
+					m.type == Material::MetalWorkflow ? 1.0f : 4.0f))
+				{
+					scene.glContext.material->write(sizeof(Material) * uiMatIndex, sizeof(Material), &m);
+					resetCounter();
+				}
+			}
+
+			if (ImGui::Combo("EnvMap", &uiEnvIndex, envStr.c_str(), envList.size()))
+			{
+				scene.envMap = EnvironmentMap::create(envList[uiEnvIndex]);
+				rayTraceShader->setTexture("uEnvMap", scene.envMap->envMap(), 8);
+				rayTraceShader->setTexture("uEnvAliasTable", scene.envMap->aliasTable(), 9);
+				rayTraceShader->setTexture("uEnvAliasProb", scene.envMap->aliasProb(), 10);
+				rayTraceShader->set1f("uEnvSum", scene.envMap->sumPdf());
+				resetCounter();
+			}
+
+			if (ImGui::SliderAngle("EnvMap Rotation", &scene.envRotation, -180.0f, 180.0f))
+			{
+				rayTraceShader->set1f("uEnvRotation", scene.envRotation);
+				resetCounter();
+			}
+
+			if (scene.nLightTriangles > 0 &&
+				ImGui::Checkbox("Manual Sample Portion", &scene.lightEnvUniformSample))
+			{
+				rayTraceShader->set1i("uLightEnvUniformSample", scene.lightEnvUniformSample);
+				resetCounter();
+			}
+
+			if (scene.lightEnvUniformSample &&
+				ImGui::SliderFloat("LightPortion", &scene.lightPortion, 1e-4f, 1.0f - 1e-4f))
+			{
+				rayTraceShader->set1f("uLightSamplePortion", scene.lightPortion);
+				resetCounter();
+			}
+			ImGui::EndMenu();
+		}
+
+		if (ImGui::BeginMenu("Camera"))
+		{
+			auto pos = scene.camera.pos();
+			auto fov = scene.camera.FOV();
+			auto angle = scene.camera.angle();
+			if (ImGui::DragFloat3("Position", glm::value_ptr(pos), 0.1f) ||
+				ImGui::DragFloat3("Angle", glm::value_ptr(angle), 0.05f) ||
+				ImGui::SliderFloat("FOV", &fov, 0.0f, 90.0f) ||
+				ImGui::DragFloat("FocalDistance", &scene.focalDist, 0.01f, 0.004f, 100.0f) ||
+				ImGui::DragFloat("LensRadius", &scene.lensRadius, 0.001f, 0.0f, 10.0f))
+			{
+				scene.camera.setPos(pos);
+				scene.camera.setAngle(angle);
+				scene.camera.setFOV(fov);
+				updateCameraUniforms();
+				resetCounter();
+			}
+			ImGui::EndMenu();
+		}
+
+		if (ImGui::BeginMenu("Statistics"))
+		{
+			ImGui::Text("BVH Nodes: %d\nTriangles: %d\nVertices: %d", boxCount, triangleCount, vertexCount);
+			ImGui::EndMenu();
+		}
+		ImGui::EndMainMenuBar();
 	}
-	ImGui::End();
 
 	if (ImGui::Begin("Example: Simple overlay", nullptr,
 		ImGuiWindowFlags_NoMove |
@@ -434,6 +465,8 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mode
 
 	if (key == GLFW_KEY_F1 && action == GLFW_PRESS)
 	{
+		if (cursorDisabled)
+			firstCursorMove = true;
 		cursorDisabled ^= 1;
 		glfwSetInputMode(window, GLFW_CURSOR, cursorDisabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
 	}
@@ -444,7 +477,7 @@ void cursorCallback(GLFWwindow* window, double posX, double posY)
 	using namespace InputRecord;
 
 	if (!cursorDisabled) return;
-	if (firstCursorMove == 1)
+	if (firstCursorMove)
 	{
 		lastCursorX = posX;
 		lastCursorY = posY;
