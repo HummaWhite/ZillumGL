@@ -34,6 +34,4 @@ private:
 
 	InitFunc mInitFunc;
 	MainLoopFunc mMainLoopFunc;
-
-	static std::vector<GLFWmonitor*> Monitors;
 };

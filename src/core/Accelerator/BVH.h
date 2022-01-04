@@ -8,8 +8,6 @@
 #include "../Buffer.h"
 #include "../Model.h"
 
-enum class BVHSplitMethod { SAH, Middle, EqualCounts };
-
 const int BVH_LEAF_MASK = 0x80000000;
 
 struct PackedBVH
@@ -28,13 +26,14 @@ struct PrimInfo
 class BVH
 {
 public:
-	BVH(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, BVHSplitMethod splitMethod = BVHSplitMethod::SAH) :
-		vertices(vertices), indices(indices), method(splitMethod) {}
+	BVH(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices) :
+		vertices(vertices), indices(indices) {}
 
 	PackedBVH build();
 
 private:
-	void build(int offset, const AABB& nodeBound, int l, int r);
+	void standardBuild(const AABB& rootExtent);
+	void quickBuild(const AABB& rootExtent);
 	void buildHitTable();
 
 private:
@@ -44,7 +43,6 @@ private:
 	std::vector<AABB> bounds;
 	std::vector<int> sizeIndices;
 	std::vector<int> hitTable;
-	BVHSplitMethod method;
-	int treeSize = 0;
+	size_t treeSize = 0;
 };
 

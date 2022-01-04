@@ -12,6 +12,12 @@ AABB::AABB(const AABB& boundA, const AABB& boundB)
 	pMax = glm::max(boundA.pMax, boundB.pMax);
 }
 
+void AABB::expand(const AABB& rhs)
+{
+	pMin = glm::min(pMin, rhs.pMin);
+	pMax = glm::max(pMax, rhs.pMax);
+}
+
 glm::vec3 AABB::centroid() const
 {
 	return (pMin + pMax) * 0.5f;

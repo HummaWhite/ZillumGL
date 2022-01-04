@@ -67,14 +67,14 @@ void Camera::rotate(glm::vec3 angle)
 void Camera::changeFOV(float offset)
 {
 	mFOV -= glm::radians(offset) * SensitivityFOV;
-	if (mFOV > 180.0f) mFOV = 180.0f;
+	if (mFOV > 90.0f) mFOV = 90.0f;
 	if (mFOV < 0.1f) mFOV = 0.1f;
 }
 
 void Camera::setFOV(float fov)
 {
 	mFOV = fov;
-	if (mFOV > 180.0f) mFOV = 180.0f;
+	if (mFOV > 90.0f) mFOV = 90.0f;
 	if (mFOV < 0.1f) mFOV = 0.1f;
 }
 

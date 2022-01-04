@@ -129,10 +129,9 @@ vec3 trace(Ray ray, int id, SurfaceInfo surfaceInfo, inout Sampler s)
 		newRay.ori = P + Wi * 1e-4;
 		newRay.dir = Wi;
 
-		SceneHitInfo scHitInfo = sceneHit(newRay);
-		int primId = scHitInfo.primId;
+		float dist;
+		int primId = bvhHit(newRay, dist);
 		int lightId = primId - uObjPrimCount;
-		float dist = scHitInfo.dist;
 		vec3 hitPoint = rayPoint(newRay, dist);
 		
 		if (primId == -1)
@@ -214,24 +213,25 @@ Ray sampleLensCamera(vec2 uv, inout Sampler s)
 vec3 getResult(Ray ray, inout Sampler s)
 {
 	vec3 result = vec3(0.0);
-	SceneHitInfo scHitInfo = sceneHit(ray);
-	int primId = scHitInfo.primId;
-	float dist = scHitInfo.dist;
-	vec3 hitPoint = rayPoint(ray, dist);
 
 	if (uShowBVH)
 	{
+		float maxDepth;
+		int primId = bvhDebug(ray, maxDepth);
 		int matId = texelFetch(uMatTexIndices, primId).r & 0xffff;
 		if (matId == uMatIndex && primId != -1) result = vec3(1.0, 1.0, 0.2);
 		else result = vec3(maxDepth / uBvhDepth * 0.2);
 	}
 	else
 	{
-		if (scHitInfo.primId == -1)
+		float dist;
+		int primId = bvhHit(ray, dist);
+		vec3 hitPoint = rayPoint(ray, dist);
+		if (primId == -1)
 		{
 			result = envGetRadiance(ray.dir);
 		}
-		else if (scHitInfo.primId < uObjPrimCount)
+		else if (primId < uObjPrimCount)
 		{
 			ray.ori = hitPoint;
 			SurfaceInfo sInfo = triangleSurfaceInfo(primId, ray.ori);

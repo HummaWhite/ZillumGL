@@ -222,6 +222,7 @@ void init(int width, int height, GLFWwindow* window)
 	updateCameraUniforms();
 
 	VerticalSyncStatus(Settings::verticalSync);
+	Resource::clear();
 }
 
 void mainLoop()
@@ -282,6 +283,12 @@ void renderGUI()
 
 		if (ImGui::BeginMenu("Settings"))
 		{
+			if (ImGui::MenuItem("Display BVH", nullptr, &showBVH))
+			{
+				rayTraceShader->set1i("uShowBVH", Settings::showBVH);
+				resetCounter();
+			}
+
 			if (ImGui::MenuItem("Vertical Sync", nullptr, &verticalSync))
 				VerticalSyncStatus(verticalSync);
 
@@ -289,16 +296,8 @@ void renderGUI()
 				resetCounter();
 			if (limitSpp)
 			{
-				//ImGui::SameLine();
-				//ImGui::SetNextItemWidth(-100);
 				if (ImGui::DragInt("Max SPP", &maxSpp, 1.0f, 0, 131072) && curSpp > maxSpp)
 					resetCounter();
-			}
-
-			if (ImGui::MenuItem("Display BVH", nullptr, &showBVH))
-			{
-				rayTraceShader->set1i("uShowBVH", Settings::showBVH);
-				resetCounter();
 			}
 
 			if (ImGui::MenuItem("Ambient Occlusion", nullptr, &scene.aoMode))
@@ -427,9 +426,24 @@ void renderGUI()
 
 		if (ImGui::BeginMenu("Statistics"))
 		{
-			ImGui::Text("BVH Nodes: %d\nTriangles: %d\nVertices: %d", boxCount, triangleCount, vertexCount);
+			ImGui::Text("BVH Nodes:    %d", boxCount);
+			ImGui::Text("Triangles:    %d", triangleCount);
+			ImGui::Text("Vertices:     %d", vertexCount);
 			ImGui::EndMenu();
 		}
+
+		if (ImGui::BeginMenu("Help"))
+		{
+			ImGui::BulletText("F1            Switch view/edit mode");
+			ImGui::BulletText("Q/E	       Rotate camera");
+			ImGui::BulletText("R             Reset camera rotation");
+			ImGui::BulletText("Scroll        Zoom in/out");
+			ImGui::BulletText("W/A/S/D       Move camera horizonally");
+			ImGui::BulletText("Shift/Space   Move camera vertically");
+			ImGui::BulletText("Esc           Quit");
+			ImGui::EndMenu();
+		}
+
 		ImGui::EndMainMenuBar();
 	}
 

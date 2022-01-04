@@ -1,7 +1,5 @@
 #include "Application.h"
 
-std::vector<GLFWmonitor*> Application::Monitors;
-
 std::pair<int, int> getWindowSize(GLFWwindow* window)
 {
 	int width, height;
@@ -13,14 +11,6 @@ Application::Application(int width, int height, const std::string& title)
 {
 	if (glfwInit() != GLFW_TRUE)
 		Error::exit("failed to init GLFW");
-
-	if (Monitors.empty())
-	{
-		int nMonitors;
-		auto monitors = glfwGetMonitors(&nMonitors);
-		Monitors.resize(nMonitors);
-		std::copy(monitors, monitors + nMonitors, Monitors.begin());
-	}
 
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);

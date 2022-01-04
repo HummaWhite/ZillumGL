@@ -10,9 +10,12 @@
 class AABB
 {
 public:
-	AABB() {}
-	AABB(const glm::vec3 _pMin, const glm::vec3 _pMax) :
-		pMin(_pMin), pMax(_pMax) {}
+	AABB() : pMin(1e8f), pMax(-1e8f) {}
+
+	AABB(const glm::vec3& p) : pMin(p), pMax(p) {}
+
+	AABB(const glm::vec3& pMin, const glm::vec3& pMax) :
+		pMin(pMin), pMax(pMax) {}
 
 	AABB(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax) :
 		pMin(xMin, yMin, zMin), pMax(xMax, yMax, zMax) {}
@@ -22,6 +25,7 @@ public:
 
 	AABB(const glm::vec3& va, const glm::vec3& vb, const glm::vec3& vc);
 	AABB(const AABB& boundA, const AABB& boundB);
+	void expand(const AABB& rhs);
 	glm::vec3 centroid() const;
 	float surfaceArea() const;
 	int maxExtent() const;

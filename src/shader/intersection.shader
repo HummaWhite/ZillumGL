@@ -265,7 +265,41 @@ bool boxHit(int id, Ray ray, out float tMin)
 	return false;
 }
 
-float maxDepth = 0.0;
+int bvhDebug(Ray ray, out float maxDepth)
+{
+	float dist = 1e8;
+	int closest = -1;
+	maxDepth = 0.0f;
+	int tableOffset = cubemapFace(-ray.dir) * uBvhSize;
+
+	int k = 0;
+	while (k != uBvhSize)
+	{
+		int nodeIndex = texelFetch(uHitTable, tableOffset + k).r;
+		int primIndex = texelFetch(uHitTable, tableOffset + k).g;
+
+		float boxDist;
+		bool bHit = boxHit(nodeIndex, ray, boxDist);
+		if (!bHit || (bHit && boxDist > dist))
+		{
+			k = texelFetch(uHitTable, tableOffset + k).b;
+			continue;
+		}
+
+		if (primIndex >= 0)
+		{
+			HitInfo hInfo = intersectTriangle(primIndex, ray);
+			if (hInfo.hit && hInfo.dist < dist)
+			{
+				dist = hInfo.dist;
+				closest = primIndex;
+			}
+		}
+		maxDepth += 1.0;
+		k++;
+	}
+	return closest;
+}
 
 bool bvhTest(Ray ray, float dist)
 {
@@ -325,20 +359,6 @@ int bvhHit(Ray ray, out float dist)
 			}
 		}
 		k++;
-		maxDepth += 1.0;
 	}
 	return closest;
-}
-
-struct SceneHitInfo
-{
-	int primId;
-	float dist;
-};
-
-SceneHitInfo sceneHit(Ray ray)
-{
-	SceneHitInfo ret;
-	ret.primId = bvhHit(ray, ret.dist);
-	return ret;
 }

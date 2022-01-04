@@ -21,6 +21,8 @@ public:
 	static ModelInstancePtr openModelInstance(const File::path& path,
 		const glm::vec3& pos, const glm::vec3& scale = glm::vec3(1.0f), const glm::vec3& rotation = glm::vec3(0.0f));
 
+	static void clear();
+
 private:
 	static MeshInstancePtr createNewMeshInstance(aiMesh* mesh, const aiScene* scene, const File::path& instancePath);
 

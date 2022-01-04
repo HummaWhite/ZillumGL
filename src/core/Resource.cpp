@@ -111,6 +111,14 @@ ModelInstancePtr Resource::openModelInstance(const File::path& path,
 	return newCopy;
 }
 
+void Resource::clear()
+{
+	imagePool.clear();
+	mapPathToImageIndex.clear();
+	meshDataPool.clear();
+	mapPathToModelInstance.clear();
+}
+
 MeshInstancePtr Resource::createNewMeshInstance(aiMesh* mesh, const aiScene* scene, const File::path& instancePath)
 {
 	Error::line("\t[Mesh nVertices = " + std::to_string(mesh->mNumVertices) +
