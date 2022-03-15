@@ -21,12 +21,6 @@ std::string envStr;
 
 NAMESPACE_BEGIN(PathTracer)
 
-namespace CSGroupNum
-{
-	int numX;
-	int numY;
-}
-
 namespace InputRecord
 {
 	int lastCursorX = 0;
@@ -63,30 +57,37 @@ namespace Settings
 	int uiMatIndex = 0;
 	int uiEnvIndex;
 
-	bool showBVH = true;
+	bool showBVH = false;
 	bool cursorDisabled = false;
 
 	bool pause = false;
 	bool verticalSync = false;
+
+	bool preview = true;
+	int previewScale = 8;
+
+	bool limitSpp = false;
+	int maxSpp = 64;
+
+	bool russianRoulette = false;
 }
 
 namespace SampleCounter
 {
-	bool limitSpp = false;
-	int maxSpp = 64;
 	int curSpp = 0;
 	int freeCounter = 0;
 }
 
-void calcCSGroupNum(int width, int height)
+bool isPressing(int keyCode)
 {
-	CSGroupNum::numX = (width + WorkgroupSizeX - 1) / WorkgroupSizeX;
-	CSGroupNum::numY = (height + WorkgroupSizeY - 1) / WorkgroupSizeY;
+	auto res = InputRecord::pressedKeys.find(keyCode);
+	return res != InputRecord::pressedKeys.end();
 }
 
 void count()
 {
 	using namespace SampleCounter;
+	using namespace Settings;
 	freeCounter++;
 	if (curSpp < maxSpp || !limitSpp)
 		curSpp++;
@@ -113,14 +114,13 @@ void updateCameraUniforms()
 
 void processKeys()
 {
-	using namespace InputRecord;
 	const int Keys[] = { GLFW_KEY_W, GLFW_KEY_S, GLFW_KEY_A, GLFW_KEY_D,
 		GLFW_KEY_Q, GLFW_KEY_E, GLFW_KEY_R, GLFW_KEY_LEFT_SHIFT, GLFW_KEY_SPACE };
 
 	bool updated = false;
 	for (auto key : Keys)
 	{
-		if (pressedKeys.find(key) != pressedKeys.end())
+		if (isPressing(key))
 		{
 			GLContext::scene.camera.move(key);
 			updated = true;
@@ -132,6 +132,16 @@ void processKeys()
 		updateCameraUniforms();
 		resetCounter();
 	}
+}
+
+void captureImage()
+{
+	std::string name = "screenshots/save" + std::to_string((long long)time(0)) + ".png";
+	auto img = GLContext::pipeline->readFramePixels();
+	stbi_flip_vertically_on_write(true);
+	stbi_write_png(name.c_str(), img->width(), img->height(), 3, img->data(), img->width() * 3);
+	Error::bracketLine<0>("Save " + name + " " + std::to_string(img->width()) + "x"
+		+ std::to_string(img->height()));
 }
 
 void init(int width, int height, GLFWwindow* window)
@@ -171,7 +181,7 @@ void init(int width, int height, GLFWwindow* window)
 
 	frameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
 	
-	rayTraceShader = Shader::create("compute.shader", { WorkgroupSizeX, WorkgroupSizeY, 1 },
+	rayTraceShader = Shader::create("per_pixel_integs.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 },
 		"#extension GL_EXT_texture_array : enable\n");
 	Pipeline::bindTextureToImage(frameTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
 	rayTraceShader->setTexture("uVertices", sceneBuffers.vertex, 1);
@@ -201,15 +211,11 @@ void init(int width, int height, GLFWwindow* window)
 	rayTraceShader->set1i("uBvhSize", Count::boxCount);
 	rayTraceShader->set1i("uSampleDim", scene.SampleDim);
 	rayTraceShader->set1i("uSampleNum", scene.SampleNum);
-	rayTraceShader->set2i("uFrameSize", width, height);
 
-	postShader = Shader::create("postEffects.shader");
+	postShader = Shader::create("post_proc.glsl");
 	postShader->set1i("uToneMapper", scene.toneMapping);
 	postShader->setTexture("uFrame", frameTex, 0);
 
-	calcCSGroupNum(width, height);
-
-	rayTraceShader->set1i("uShowBVH", Settings::showBVH);
 	rayTraceShader->set1i("uAoMode", scene.aoMode);
 	rayTraceShader->setVec3("uAoCoef", scene.aoCoef);
 	rayTraceShader->set1i("uMaxBounce", scene.maxBounce);
@@ -237,16 +243,58 @@ void trace()
 {
 	using namespace GLContext;
 	using namespace SampleCounter;
-	rayTraceShader->set1i("uSpp", curSpp);
-	rayTraceShader->set1i("uFreeCounter", freeCounter);
-
+	using namespace Settings;
+	
 	if (curSpp < maxSpp || !limitSpp)
 	{
-		Pipeline::dispatchCompute(CSGroupNum::numX, CSGroupNum::numY, 1, rayTraceShader);
+		int width = preview ? frameTex->width() / previewScale : frameTex->width();
+		int height = preview ? frameTex->height() / previewScale : frameTex->height();
+		int numX = (width + WorkgroupSizeX - 1) / WorkgroupSizeX;
+		int numY = (height + WorkgroupSizeY - 1) / WorkgroupSizeY;
+
+		rayTraceShader->set1i("uShowBVH", Settings::showBVH);
+		rayTraceShader->set1i("uSpp", curSpp);
+		rayTraceShader->set1i("uFreeCounter", freeCounter);
+		rayTraceShader->set2i("uFilmSize", width, height);
+
+		Pipeline::dispatchCompute(numX, numY, 1, rayTraceShader);
 		Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
 	}
+
 	pipeline->clear({ 0.0f, 0.0f, 0.0f, 1.0f });
+	postShader->set1i("uPreview", preview);
+	postShader->set1i("uPreviewScale", previewScale);
+	postShader->set1f("uResultScale", 1.0f / (curSpp + 1));
 	pipeline->draw(screenVB, VertexArray::layoutPos2(), postShader);
+}
+
+void materialEditor(Scene& scene, int matIndex)
+{
+	auto& m = scene.materials[matIndex];
+	const char* matTypes[] = { "Principled", "MetalWorkflow", "Dielectric", "ThinDielectric" };
+	if (ImGui::Combo("Type", &m.type, matTypes, IM_ARRAYSIZE(matTypes)))
+	{
+		scene.glContext.material->write(sizeof(Material) * matIndex, sizeof(Material), &m);
+		resetCounter();
+	}
+
+	if (m.type == Material::Principled)
+	{
+		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
+			ImGui::SliderFloat("Subsurface", &m.subsurface, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Metallic", &m.metallic, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Specular", &m.specular, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Specular tint", &m.specularTint, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Sheen", &m.sheen, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Sheen tint", &m.sheenTint, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Clearcoat", &m.clearcoat, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Clearcoat gloss", &m.clearcoatGloss, 0.0f, 1.0f))
+		{
+			scene.glContext.material->write(sizeof(Material) * matIndex, sizeof(Material), &m);
+			resetCounter();
+		}
+	}
 }
 
 void renderGUI()
@@ -265,17 +313,12 @@ void renderGUI()
 		if (ImGui::BeginMenu("File"))
 		{
 			if (ImGui::MenuItem("Open", "Ctrl+O"));
-			if (ImGui::MenuItem("Save", "Ctrl+S"));
-
-			if (ImGui::MenuItem("Save Image", "Ctrl+P"))
+			if (ImGui::MenuItem("Save", "Ctrl+S"))
 			{
-				std::string name = "screenshots/save" + std::to_string((long long)time(0)) + ".png";
-				auto img = pipeline->readFramePixels();
-				stbi_flip_vertically_on_write(true);
-				stbi_write_png(name.c_str(), img->width(), img->height(), 3, img->data(), img->width() * 3);
-				Error::bracketLine<0>("Save " + name + " " + std::to_string(img->width()) + "x"
-					+ std::to_string(img->height()));
 			}
+
+			if (ImGui::MenuItem("Save image", nullptr))
+				captureImage();
 
 			if (ImGui::MenuItem("Exit", "Esc"));
 			ImGui::EndMenu();
@@ -283,37 +326,47 @@ void renderGUI()
 
 		if (ImGui::BeginMenu("Settings"))
 		{
-			if (ImGui::MenuItem("Display BVH", nullptr, &showBVH))
-			{
-				rayTraceShader->set1i("uShowBVH", Settings::showBVH);
+			if (ImGui::MenuItem("Display BVH", "Ctrl+B", &showBVH))
 				resetCounter();
-			}
 
-			if (ImGui::MenuItem("Vertical Sync", nullptr, &verticalSync))
-				VerticalSyncStatus(verticalSync);
-
-			if (ImGui::MenuItem("Limit SPP", nullptr, &limitSpp) && curSpp > maxSpp)
+			if (ImGui::MenuItem("Preview mode", "Ctrl+P", &preview))
 				resetCounter();
-			if (limitSpp)
+			if (preview)
 			{
-				if (ImGui::DragInt("Max SPP", &maxSpp, 1.0f, 0, 131072) && curSpp > maxSpp)
+				if (ImGui::SliderInt("Preview scale", &previewScale, 2, 32))
 					resetCounter();
 			}
 
-			if (ImGui::MenuItem("Ambient Occlusion", nullptr, &scene.aoMode))
+			if (ImGui::MenuItem("Vertical sync", nullptr, &verticalSync))
+				VerticalSyncStatus(verticalSync);
+
+			if (ImGui::MenuItem("Russian roulette", nullptr, &russianRoulette))
+			{
+				rayTraceShader->set1i("uRussianRoulette", russianRoulette);
+				resetCounter();
+			}
+
+			if (ImGui::MenuItem("Limit spp", nullptr, &limitSpp) && curSpp > maxSpp)
+				resetCounter();
+			if (limitSpp)
+			{
+				if (ImGui::DragInt("Max spp", &maxSpp, 1.0f, 0, 131072) && curSpp > maxSpp)
+					resetCounter();
+			}
+
+			if (ImGui::MenuItem("Ambient occlusion", nullptr, &scene.aoMode))
 			{
 				rayTraceShader->set1i("uAoMode", scene.aoMode);
 				if (!Settings::showBVH)
 					resetCounter();
 			}
-
 			if (scene.aoMode && ImGui::DragFloat3("AO Coef", glm::value_ptr(scene.aoCoef), 0.01f, 0.0f))
 			{
 				rayTraceShader->setVec3("uAoCoef", scene.aoCoef);
 				resetCounter();
 			}
 
-			if (ImGui::SliderInt("Max Bounces", &scene.maxBounce, 0, 60))
+			if (ImGui::SliderInt("Max bounces", &scene.maxBounce, 0, 60))
 			{
 				rayTraceShader->set1i("uMaxBounce", scene.maxBounce);
 				resetCounter();
@@ -326,7 +379,7 @@ void renderGUI()
 				resetCounter();
 			}
 
-			if (ImGui::Checkbox("Sample Direct Light", &scene.sampleLight))
+			if (ImGui::Checkbox("Sample direct light", &scene.sampleLight))
 			{
 				rayTraceShader->set1i("uSampleLight", scene.sampleLight);
 				resetCounter();
@@ -345,31 +398,11 @@ void renderGUI()
 			{
 				if (ImGui::SliderInt("Material", &uiMatIndex, 0, scene.materials.size() - 1))
 				{
-					rayTraceShader->set1i("uMatIndex", Settings::uiMatIndex);
+					rayTraceShader->set1i("uMatIndex", uiMatIndex);
 					if (showBVH)
 						resetCounter();
 				}
-
-				auto& m = scene.materials[uiMatIndex];
-				const char* matTypes[] = { "MetalWorkflow", "Dielectric", "ThinDielectric" };
-				if (ImGui::Combo("Type", &m.type, matTypes, IM_ARRAYSIZE(matTypes)) ||
-					ImGui::ColorEdit3("Albedo", glm::value_ptr(m.albedo)) ||
-					ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
-				{
-					scene.glContext.material->write(sizeof(Material) * uiMatIndex, sizeof(Material), &m);
-					resetCounter();
-				}
-
-				if (m.type == Material::MetalWorkflow) m.metIor = glm::min<float>(m.metIor, 1.0f);
-
-				if (ImGui::SliderFloat(
-					m.type == Material::MetalWorkflow ? "Metallic" : "Ior",
-					&m.metIor, 0.0f,
-					m.type == Material::MetalWorkflow ? 1.0f : 4.0f))
-				{
-					scene.glContext.material->write(sizeof(Material) * uiMatIndex, sizeof(Material), &m);
-					resetCounter();
-				}
+				materialEditor(scene, uiMatIndex);
 			}
 
 			if (ImGui::Combo("EnvMap", &uiEnvIndex, envStr.c_str(), envList.size()))
@@ -382,21 +415,21 @@ void renderGUI()
 				resetCounter();
 			}
 
-			if (ImGui::SliderAngle("EnvMap Rotation", &scene.envRotation, -180.0f, 180.0f))
+			if (ImGui::SliderAngle("EnvMap rotation", &scene.envRotation, -180.0f, 180.0f))
 			{
 				rayTraceShader->set1f("uEnvRotation", scene.envRotation);
 				resetCounter();
 			}
 
 			if (scene.nLightTriangles > 0 &&
-				ImGui::Checkbox("Manual Sample Portion", &scene.lightEnvUniformSample))
+				ImGui::Checkbox("Manual sample portion", &scene.lightEnvUniformSample))
 			{
 				rayTraceShader->set1i("uLightEnvUniformSample", scene.lightEnvUniformSample);
 				resetCounter();
 			}
 
 			if (scene.lightEnvUniformSample &&
-				ImGui::SliderFloat("LightPortion", &scene.lightPortion, 1e-4f, 1.0f - 1e-4f))
+				ImGui::SliderFloat("Light portion", &scene.lightPortion, 1e-4f, 1.0f - 1e-4f))
 			{
 				rayTraceShader->set1f("uLightSamplePortion", scene.lightPortion);
 				resetCounter();
@@ -412,8 +445,8 @@ void renderGUI()
 			if (ImGui::DragFloat3("Position", glm::value_ptr(pos), 0.1f) ||
 				ImGui::DragFloat3("Angle", glm::value_ptr(angle), 0.05f) ||
 				ImGui::SliderFloat("FOV", &fov, 0.0f, 90.0f) ||
-				ImGui::DragFloat("FocalDistance", &scene.focalDist, 0.01f, 0.004f, 100.0f) ||
-				ImGui::DragFloat("LensRadius", &scene.lensRadius, 0.001f, 0.0f, 10.0f))
+				ImGui::DragFloat("Focal distance", &scene.focalDist, 0.01f, 0.004f, 100.0f) ||
+				ImGui::DragFloat("Lens radius", &scene.lensRadius, 0.001f, 0.0f, 10.0f))
 			{
 				scene.camera.setPos(pos);
 				scene.camera.setAngle(angle);
@@ -426,7 +459,7 @@ void renderGUI()
 
 		if (ImGui::BeginMenu("Statistics"))
 		{
-			ImGui::Text("BVH Nodes:    %d", boxCount);
+			ImGui::Text("BVH nodes:    %d", boxCount);
 			ImGui::Text("Triangles:    %d", triangleCount);
 			ImGui::Text("Vertices:     %d", vertexCount);
 			ImGui::EndMenu();
@@ -455,7 +488,10 @@ void renderGUI()
 		ImGuiWindowFlags_NoFocusOnAppearing |
 		ImGuiWindowFlags_NoNav))
 	{
-		ImGui::Text("SPP: %d", SampleCounter::curSpp);
+		if (limitSpp)
+			ImGui::Text("Spp: %d/%d", curSpp, maxSpp);
+		else
+			ImGui::Text("Spp: %d", curSpp);
 		ImGui::Text("Render Time: %.3f ms, FPS: %.3f", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 		ImGui::End();
 	}
@@ -474,15 +510,35 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mode
 	else if (action == GLFW_RELEASE)
 		pressedKeys.erase(key);
 
-	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-		glfwSetWindowShouldClose(window, true);
-
-	if (key == GLFW_KEY_F1 && action == GLFW_PRESS)
+	if (action == GLFW_PRESS)
 	{
-		if (cursorDisabled)
-			firstCursorMove = true;
-		cursorDisabled ^= 1;
-		glfwSetInputMode(window, GLFW_CURSOR, cursorDisabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+		if (key == GLFW_KEY_ESCAPE)
+			glfwSetWindowShouldClose(window, true);
+		else if (key == GLFW_KEY_F1)
+		{
+			if (cursorDisabled)
+				firstCursorMove = true;
+			cursorDisabled ^= 1;
+			glfwSetInputMode(window, GLFW_CURSOR, cursorDisabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+		}
+		if (!isPressing(GLFW_KEY_LEFT_CONTROL) && !isPressing(GLFW_KEY_RIGHT_CONTROL))
+			return;
+
+		if (key == GLFW_KEY_P)
+		{
+			Settings::preview ^= 1;
+			resetCounter();
+		}
+		else if (key == GLFW_KEY_B)
+		{
+			Settings::showBVH ^= 1;
+			resetCounter();
+		}
+		else if (key == GLFW_KEY_V)
+		{
+			Settings::verticalSync ^= 1;
+			VerticalSyncStatus(Settings::verticalSync);
+		}
 	}
 }
 
@@ -525,14 +581,14 @@ void resizeCallback(GLFWwindow* window, int width, int height)
 
 	using namespace GLContext;
 	frameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
+	frameTex->setFilter(TextureFilter::Nearest);
 	Pipeline::bindTextureToImage(frameTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
 	pipeline->setViewport(0, 0, width, height);
 	scene.camera.setAspect(static_cast<float>(width) / height);
 
-	rayTraceShader->set2i("uFrameSize", width, height);
+	rayTraceShader->set2i("uFilmSize", width, height);
 	rayTraceShader->set1f("uCamAsp", scene.camera.aspect());
 	postShader->setTexture("uFrame", frameTex, 0);
-	calcCSGroupNum(width, height);
 	
 	resetCounter();
 }

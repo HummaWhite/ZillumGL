@@ -1,13 +1,11 @@
 @type lib
-@include math.shader
+@include math.glsl
 
 uniform sampler2D uEnvMap;
 uniform isampler2D uEnvAliasTable;
 uniform sampler2D uEnvAliasProb;
 uniform float uEnvSum;
 uniform float uEnvRotation;
-
-const vec3 BRIGHTNESS = vec3(0.299, 0.587, 0.114);
 
 struct LightSample
 {
@@ -35,7 +33,7 @@ vec3 envGetRadiance(vec3 Wi)
 
 float envGetPortion(vec3 Wi)
 {
-	return dot(envGetRadiance(Wi), BRIGHTNESS) / uEnvSum;
+	return luminance(envGetRadiance(Wi)) / uEnvSum;
 }
 
 float envPdfLi(vec3 Wi)

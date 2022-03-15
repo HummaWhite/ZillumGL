@@ -1,5 +1,5 @@
 @type lib
-@include random.shader
+@include random.glsl
 
 const float Pi = 3.14159265358979323846;
 const float PiInv = 1.0 / Pi;
@@ -38,21 +38,6 @@ vec2 toConcentricDisk(vec2 v)
 		phi = Pi * 0.5 - Pi * v.x / v.y * 0.25;
 	}
 	return vec2(r * cos(phi), r * sin(phi));
-}
-
-float inverseBits(uint bits)
-{
-	bits = (bits << 16u) | (bits >> 16u);
-	bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-	bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-	bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-	return float(bits) * 2.3283064365386963e-10;
-}
-
-vec2 hammersley(uint i, uint n)
-{
-	return vec2(float(i) / float(n), inverseBits(i));
 }
 
 float satDot(vec3 a, vec3 b)
@@ -126,8 +111,15 @@ bool sameHemisphere(vec3 N, vec3 A, vec3 B)
 
 int maxExtent(vec3 v)
 {
-	if (v.x > v.y) return v.x > v.z ? 0 : 2;
-	return v.y > v.z ? 1 : 2;
+	if (v.x > v.y)
+		return v.x > v.z ? 0 : 2;
+	else
+		return v.y > v.z ? 1 : 2;
+}
+
+float maxComponent(vec3 v)
+{
+	return max(v.x, max(v.y, v.z));
 }
 
 int cubemapFace(vec3 dir)
@@ -190,4 +182,25 @@ vec3 rotateZ(vec3 v, float angle)
 	float cost = cos(angle);
 	float sint = sin(angle);
 	return vec3(vec2(v.x * cost - v.y * sint, v.x * sint + v.y * cost), v.z);
+}
+
+float pow5(float x)
+{
+	float x2 = x * x;
+	return x2 * x2 * x;
+}
+
+float luminance(vec3 color)
+{
+	return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+bool isBlack(vec3 color)
+{
+	return luminance(color) < 1e-5f;
+}
+
+bool hasNan(vec3 color)
+{
+	return isnan(color.x) || isnan(color.y) || isnan(color.z);
 }

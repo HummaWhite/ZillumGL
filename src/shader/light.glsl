@@ -1,5 +1,6 @@
 @type lib
-@include envMap.shader
+
+@include env_light.glsl
 
 uniform samplerBuffer uLightPower;
 uniform isamplerBuffer uLightAlias;
@@ -66,7 +67,7 @@ LightSample lightSampleOne(vec3 x, vec4 u)
 
 	vec3 weight = lightGetRadiance(id, y, -Wi);
 
-	float pdfSample = dot(texelFetch(uLightPower, id).rgb, BRIGHTNESS) / uLightSum;
+	float pdfSample = luminance(texelFetch(uLightPower, id).rgb) / uLightSum;
 	pdf *= pdfSample;
 	return lightSample(Wi, weight / pdf, pdf);
 }
@@ -89,7 +90,7 @@ LightSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
 
 float pdfSelectLight(int id)
 {
-	float fstPdf = dot(texelFetch(uLightPower, id).rgb, BRIGHTNESS) / uLightSum;
+	float fstPdf = luminance(texelFetch(uLightPower, id).rgb) / uLightSum;
 	float sndPdf = uLightEnvUniformSample ? uLightSamplePortion : uLightSum / (uLightSum + uEnvSum);
 	return fstPdf * sndPdf;
 }

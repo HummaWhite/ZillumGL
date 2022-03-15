@@ -1,5 +1,5 @@
 @type lib
-@include math.shader
+@include math.glsl
 
 uniform samplerBuffer uVertices;
 uniform samplerBuffer uNormals;

@@ -17,6 +17,9 @@ out vec4 FragColor;
 
 uniform sampler2D uFrame;
 uniform int uToneMapper;
+uniform bool uPreview;
+uniform int uPreviewScale;
+uniform float uResultScale;
 
 vec3 reinhard(vec3 color)
 {
@@ -47,11 +50,10 @@ vec3 ACES(vec3 color)
 
 void main()
 {
-	vec2 texPos = texCoord;
-	vec3 color = texture(uFrame, texPos).rgb;
+	vec2 uv = uPreview ? texCoord / float(uPreviewScale) : texCoord;
+	vec3 color = texture(uFrame, uv).rgb * uResultScale;
 	
-	// 如果不Clamp掉负值会出现奇怪的问题
-	color = clamp(color, 0.0, 1e8);
+	color = clamp(color, 0.0, 1e30);
 
 	vec3 mapped = color;
 	switch (uToneMapper)
