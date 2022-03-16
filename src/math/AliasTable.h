@@ -3,7 +3,7 @@
 #include <iostream>
 #include <vector>
 
-#include "../../util/NamespaceDecl.h"
+#include "../util/NamespaceDecl.h"
 
 class AliasTable
 {

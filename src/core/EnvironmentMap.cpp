@@ -21,9 +21,9 @@ EnvironmentMap::EnvironmentMap(const File::path& path)
 		return i * (width + 1) + j;
 	};
 
-	auto brightness = [](float* p)
+	auto luminance = [](float* p)
 	{
-		return (0.299f * (*p) + 0.587f * (*(p + 1)) + 0.114f * (*(p + 2)));
+		return (0.2126f * (*p) + 0.7152f * (*(p + 1)) + 0.0722f * (*(p + 2)));
 	};
 
 	Error::bracketLine<0>("EnvMap generating sample table");
@@ -37,7 +37,7 @@ EnvironmentMap::EnvironmentMap(const File::path& path)
 	{
 		for (int j = 0; j < width; j++)
 		{
-			pdf[offset(i, j)] = brightness(data + 3 * (i * width + j)) *
+			pdf[offset(i, j)] = luminance(data + 3 * (i * width + j)) *
 				std::sin((float)(i + 0.5f) / height * 3.141592653589793f);
 		}
 	}

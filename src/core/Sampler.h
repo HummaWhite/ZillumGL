@@ -4,7 +4,7 @@
 
 #include "Buffer.h"
 #include "Texture.h"
-#include "Math/SobolMatrices256x32.h"
+#include "../math/SobolMatrices256x32.h"
 #include "../util/NamespaceDecl.h"
 
 NAMESPACE_BEGIN(Sampler)

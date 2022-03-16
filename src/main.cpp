@@ -1,5 +1,4 @@
 #include "Application.h"
-#include "PathTracer.h"
 #include "thirdparty/pugixml/pugixml.hpp"
 
 std::pair<int, int> loadConfigFilmSize()
@@ -15,10 +14,6 @@ std::pair<int, int> loadConfigFilmSize()
 int main()
 {
 	auto [width, height] = loadConfigFilmSize();
-
-    Application app(width, height, "Zillum");
-	app.bindInitFunc(PathTracer::init);
-	app.bindMainLoopFunc(PathTracer::mainLoop);
-
-    return app.run();
+    Application::init(width, height, "Zillum");
+    return Application::run();
 }

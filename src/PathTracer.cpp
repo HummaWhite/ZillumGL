@@ -21,93 +21,18 @@ std::string envStr;
 
 NAMESPACE_BEGIN(PathTracer)
 
-namespace InputRecord
-{
-	int lastCursorX = 0;
-	int lastCursorY = 0;
-	bool firstCursorMove = true;
-	bool cursorDisabled = false;
-
-	std::set<int> pressedKeys;
-}
-
-namespace Count
-{
-	int boxCount;
-	int triangleCount;
-	int vertexCount;
-}
-
-namespace GLContext
-{
-	PipelinePtr pipeline;
-
-	ShaderPtr rayTraceShader;
-	ShaderPtr postShader;
-
-	Texture2DPtr frameTex;
-	VertexBufferPtr screenVB;
-
-	Scene scene;
-}
-
-namespace Settings
-{
-	int uiMeshIndex = 0;
-	int uiMatIndex = 0;
-	int uiEnvIndex;
-
-	bool showBVH = false;
-	bool cursorDisabled = false;
-
-	bool pause = false;
-	bool verticalSync = false;
-
-	bool preview = true;
-	int previewScale = 8;
-
-	bool limitSpp = false;
-	int maxSpp = 64;
-
-	bool russianRoulette = false;
-}
-
-namespace SampleCounter
-{
-	int curSpp = 0;
-	int freeCounter = 0;
-}
-
-bool isPressing(int keyCode)
-{
-	auto res = InputRecord::pressedKeys.find(keyCode);
-	return res != InputRecord::pressedKeys.end();
-}
-
-void count()
-{
-	using namespace SampleCounter;
-	using namespace Settings;
-	freeCounter++;
-	if (curSpp < maxSpp || !limitSpp)
-		curSpp++;
-}
-
-void resetCounter()
-{
-	SampleCounter::curSpp = 0;
-	GLContext::rayTraceShader->set1i("uSpp", SampleCounter::curSpp);
-}
-
 void updateCameraUniforms()
 {
 	using namespace GLContext;
-	rayTraceShader->setVec3("uCamF", scene.camera.front());
-	rayTraceShader->setVec3("uCamR", scene.camera.right());
-	rayTraceShader->setVec3("uCamU", scene.camera.up());
-	rayTraceShader->setVec3("uCamPos", scene.camera.pos());
-	rayTraceShader->set1f("uTanFOV", glm::tan(glm::radians(scene.camera.FOV() * 0.5f)));
-	rayTraceShader->set1f("uCamAsp", scene.camera.aspect());
+	const auto& cam = scene.camera;
+	rayTraceShader->setVec3("uCamF", cam.front());
+	rayTraceShader->setVec3("uCamR", cam.right());
+	rayTraceShader->setVec3("uCamU", cam.up());
+	glm::mat3 camMatrix(cam.right(), cam.up(), cam.front());
+	rayTraceShader->setMat3("uCamMatInv", glm::inverse(camMatrix));
+	rayTraceShader->setVec3("uCamPos", cam.pos());
+	rayTraceShader->set1f("uTanFOV", glm::tan(glm::radians(cam.FOV() * 0.5f)));
+	rayTraceShader->set1f("uCamAsp", cam.aspect());
 	rayTraceShader->set1f("uLensRadius", scene.lensRadius);
 	rayTraceShader->set1f("uFocalDist", scene.focalDist);
 }
@@ -146,33 +71,6 @@ void captureImage()
 
 void init(int width, int height, GLFWwindow* window)
 {
-	glfwSetKeyCallback(window, keyCallback);
-	glfwSetCursorPosCallback(window, cursorCallback);
-	glfwSetScrollCallback(window, scrollCallback);
-	glfwSetWindowSizeCallback(window, resizeCallback);
-
-	VertexArray::initDefaultLayouts();
-
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	ImGui::StyleColorsClassic();
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 450");
-
-	using namespace GLContext;
-	PipelineCreateInfo plInfo;
-	plInfo.primType = PrimitiveType::Triangles;
-	plInfo.faceToDraw = DrawFace::FrontBack;
-	plInfo.polyMode = PolygonMode::Fill;
-	plInfo.clearBuffer = BufferBit::Color | BufferBit::Depth;
-	pipeline = Pipeline::create(plInfo);
-	pipeline->setViewport(0, 0, width, height);
-
-	screenVB = VertexBuffer::createTyped<glm::vec2>(ScreenCoord, 6);
-
-	scene.load();
-	scene.createGLContext();
 	auto& sceneBuffers = scene.glContext;
 
 	Count::boxCount = sceneBuffers.bound->size() / sizeof(AABB);
@@ -181,7 +79,7 @@ void init(int width, int height, GLFWwindow* window)
 
 	frameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
 	
-	rayTraceShader = Shader::create("per_pixel_integs.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 },
+	rayTraceShader = Shader::create("main.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 },
 		"#extension GL_EXT_texture_array : enable\n");
 	Pipeline::bindTextureToImage(frameTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
 	rayTraceShader->setTexture("uVertices", sceneBuffers.vertex, 1);
@@ -468,7 +366,7 @@ void renderGUI()
 		if (ImGui::BeginMenu("Help"))
 		{
 			ImGui::BulletText("F1            Switch view/edit mode");
-			ImGui::BulletText("Q/E	       Rotate camera");
+			ImGui::BulletText("Q/E			Rotate camera");
 			ImGui::BulletText("R             Reset camera rotation");
 			ImGui::BulletText("Scroll        Zoom in/out");
 			ImGui::BulletText("W/A/S/D       Move camera horizonally");
@@ -499,98 +397,6 @@ void renderGUI()
 	ImGui::EndFrame();
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-}
-
-void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mode)
-{
-	using namespace InputRecord;
-
-	if (action == GLFW_PRESS)
-		pressedKeys.insert(key);
-	else if (action == GLFW_RELEASE)
-		pressedKeys.erase(key);
-
-	if (action == GLFW_PRESS)
-	{
-		if (key == GLFW_KEY_ESCAPE)
-			glfwSetWindowShouldClose(window, true);
-		else if (key == GLFW_KEY_F1)
-		{
-			if (cursorDisabled)
-				firstCursorMove = true;
-			cursorDisabled ^= 1;
-			glfwSetInputMode(window, GLFW_CURSOR, cursorDisabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
-		}
-		if (!isPressing(GLFW_KEY_LEFT_CONTROL) && !isPressing(GLFW_KEY_RIGHT_CONTROL))
-			return;
-
-		if (key == GLFW_KEY_P)
-		{
-			Settings::preview ^= 1;
-			resetCounter();
-		}
-		else if (key == GLFW_KEY_B)
-		{
-			Settings::showBVH ^= 1;
-			resetCounter();
-		}
-		else if (key == GLFW_KEY_V)
-		{
-			Settings::verticalSync ^= 1;
-			VerticalSyncStatus(Settings::verticalSync);
-		}
-	}
-}
-
-void cursorCallback(GLFWwindow* window, double posX, double posY)
-{
-	using namespace InputRecord;
-
-	if (!cursorDisabled) return;
-	if (firstCursorMove)
-	{
-		lastCursorX = posX;
-		lastCursorY = posY;
-		firstCursorMove = false;
-		return;
-	}
-
-	float offsetX = posX - lastCursorX;
-	float offsetY = posY - lastCursorY;
-	glm::vec3 offset = glm::vec3(offsetX, -offsetY, 0) * Camera::SensitivityRotate;
-	GLContext::scene.camera.rotate(offset);
-
-	lastCursorX = posX;
-	lastCursorY = posY;
-	updateCameraUniforms();
-	resetCounter();
-}
-
-void scrollCallback(GLFWwindow* window, double offsetX, double offsetY)
-{
-	if (!InputRecord::cursorDisabled)
-		return;
-	GLContext::scene.camera.changeFOV(offsetY);
-	updateCameraUniforms();
-	resetCounter();
-}
-
-void resizeCallback(GLFWwindow* window, int width, int height)
-{
-	Error::bracketLine<0>("Resize to " + std::to_string(width) + "x" + std::to_string(height));
-
-	using namespace GLContext;
-	frameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
-	frameTex->setFilter(TextureFilter::Nearest);
-	Pipeline::bindTextureToImage(frameTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
-	pipeline->setViewport(0, 0, width, height);
-	scene.camera.setAspect(static_cast<float>(width) / height);
-
-	rayTraceShader->set2i("uFilmSize", width, height);
-	rayTraceShader->set1f("uCamAsp", scene.camera.aspect());
-	postShader->setTexture("uFrame", frameTex, 0);
-	
-	resetCounter();
 }
 
 NAMESPACE_END(PathTracer)

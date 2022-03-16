@@ -15,17 +15,36 @@ struct Ray
 	vec3 dir;
 };
 
+Ray makeRay(vec3 ori, vec3 dir)
+{
+	Ray ret;
+	ret.ori = ori;
+	ret.dir = dir;
+	return ret;
+}
+
+vec3 rayPoint(Ray ray, float t)
+{
+	return ray.ori + ray.dir * t;
+}
+
+Ray rayOffseted(vec3 ori, vec3 dir)
+{
+	Ray ret;
+	ret.ori = ori + dir * 1e-4;
+	ret.dir = dir;
+	return ret;
+}
+
+Ray rayOffseted(Ray ray)
+{
+	return rayOffseted(ray.ori, ray.dir);
+}
+
 struct SurfaceInfo
 {
 	vec3 norm;
-	vec2 texCoord;
-};
-
-struct SurfaceInteraction
-{
-	vec3 Wo;
-	vec3 Wi;
-	vec3 N;
+	vec2 uv;
 };
 
 struct HitInfo
@@ -33,11 +52,6 @@ struct HitInfo
 	bool hit;
 	float dist;
 };
-
-vec3 rayPoint(Ray ray, float t)
-{
-	return ray.ori + ray.dir * t;
-}
 
 HitInfo intersectTriangle(vec3 a, vec3 b, vec3 c, Ray ray)
 {
@@ -155,7 +169,7 @@ SurfaceInfo triangleSurfaceInfo(int id, vec3 p)
 	float lc = 1.0 - la - lb;
 
 	ret.norm = normalize(na * la + nb * lb + nc * lc);
-	ret.texCoord = ta * la + tb * lb + tc * lc;
+	ret.uv = ta * la + tb * lb + tc * lc;
 
 	return ret;
 }

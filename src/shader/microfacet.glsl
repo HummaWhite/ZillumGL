@@ -22,9 +22,9 @@ float schlickG(float cosTheta, float alpha)
 	return cosTheta / (cosTheta * (1.0 - k) + k);
 }
 
-float smithG(vec3 N, vec3 Wo, vec3 Wi, float alpha)
+float smithG(vec3 n, vec3 wo, vec3 wi, float alpha)
 {
-	return schlickG(absDot(N, Wo), alpha) * schlickG(absDot(N, Wi), alpha);
+	return schlickG(absDot(n, wo), alpha) * schlickG(absDot(n, wi), alpha);
 }
 
 float ggx(float cosTheta, float alpha)
@@ -39,56 +39,56 @@ float ggx(float cosTheta, float alpha)
 	return nom / denom;
 }
 
-float ggxD(vec3 N, vec3 M, float alpha)
+float ggxD(vec3 n, vec3 m, float alpha)
 {
-	return ggx(dot(N, M), alpha);
+	return ggx(dot(n, m), alpha);
 }
 
-float ggxPdfWm(vec3 N, vec3 M, vec3 Wo, float alpha)
+float ggxPdfWm(vec3 n, vec3 m, vec3 wo, float alpha)
 {
-	return ggx(dot(N, M), alpha);
+	return ggx(dot(n, m), alpha);
 }
 
-float ggxPdfVisibleWm(vec3 N, vec3 M, vec3 Wo, float alpha)
+float ggxPdfVisibleWm(vec3 n, vec3 m, vec3 wo, float alpha)
 {
-	return ggx(dot(N, M), alpha) * schlickG(dot(N, Wo), alpha) * absDot(M, Wo) / absDot(N, Wo);
+	return ggx(dot(n, m), alpha) * schlickG(dot(n, wo), alpha) * absDot(m, wo) / absDot(n, wo);
 }
 
-vec3 ggxSampleWm(vec3 N, vec3 Wo, float alpha, vec2 u)
+vec3 ggxSampleWm(vec3 n, vec3 wo, float alpha, vec2 u)
 {
 	vec2 xi = toConcentricDisk(u);
 
-	vec3 H = vec3(xi.x, xi.y, sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y)));
-	H = normalize(H * vec3(alpha, alpha, 1.0));
-	return normalToWorld(N, H);
+	vec3 h = vec3(xi.x, xi.y, sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y)));
+	h = normalize(h * vec3(alpha, alpha, 1.0));
+	return normalToWorld(n, h);
 }
 
-vec3 ggxSampleWm(vec3 N, vec3 Wo, vec2 alpha, vec2 u)
+vec3 ggxSampleWm(vec3 n, vec3 wo, vec2 alpha, vec2 u)
 {
 	vec2 xi = toConcentricDisk(u);
-	vec3 H = vec3(xi.x, xi.y, sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y)));
-	H = normalize(H * vec3(alpha, 1.0));
-	return normalToWorld(N, H);
+	vec3 h = vec3(xi.x, xi.y, sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y)));
+	h = normalize(h * vec3(alpha, 1.0));
+	return normalToWorld(n, h);
 }
 
-vec3 ggxSampleVisibleWm(vec3 N, vec3 Wo, float alpha, vec2 u)
+vec3 ggxSampleVisibleWm(vec3 n, vec3 wo, float alpha, vec2 u)
 {
-	mat3 tbn = tbnMatrix(N);
+	mat3 tbn = tbnMatrix(n);
 	mat3 tbnInv = inverse(tbn);
 
-	vec3 Vh = normalize((tbnInv * Wo) * vec3(alpha, alpha, 1.0));
+	vec3 vh = normalize((tbnInv * wo) * vec3(alpha, alpha, 1.0));
 
-	float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
-	vec3 T1 = lensq > 0.0 ? vec3(-Vh.y, Vh.x, 0.0) / sqrt(lensq) : vec3(1.0, 0.0, 0.0);
-	vec3 T2 = cross(Vh, T1);
+	float lensq = vh.x * vh.x + vh.y * vh.y;
+	vec3 t1 = lensq > 0.0 ? vec3(-vh.y, vh.x, 0.0) / sqrt(lensq) : vec3(1.0, 0.0, 0.0);
+	vec3 t2 = cross(vh, t1);
 
 	vec2 xi = toConcentricDisk(u);
-	float s = 0.5 * (1.0 + Vh.z);
+	float s = 0.5 * (1.0 + vh.z);
 	xi.y = (1.0 - s) * sqrt(1.0 - xi.x * xi.x) + s * xi.y;
 
-	vec3 H = T1 * xi.x + T2 * xi.y + Vh * sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y));
-	H = normalize(vec3(H.x * alpha, H.y * alpha, max(0.0, H.z)));
-	return normalToWorld(N, H);
+	vec3 h = t1 * xi.x + t2 * xi.y + vh * sqrt(max(0.0, 1.0 - xi.x * xi.x - xi.y * xi.y));
+	h = normalize(vec3(h.x * alpha, h.y * alpha, max(0.0, h.z)));
+	return normalToWorld(n, h);
 }
 
 float gtr1(float cosTheta, float alpha)
@@ -97,24 +97,24 @@ float gtr1(float cosTheta, float alpha)
 	return (a2 - 1.0) / (2.0 * Pi * log(alpha) * (1.0 + (a2 - 1.0) * cosTheta * cosTheta));
 }
 
-float gtr1D(vec3 N, vec3 M, float alpha)
+float gtr1D(vec3 n, vec3 m, float alpha)
 {
-	return gtr1(satDot(N, M), alpha);
+	return gtr1(satDot(n, m), alpha);
 }
 
-vec3 gtr1SampleWm(vec3 N, vec3 Wo, float alpha, vec2 u)
+vec3 gtr1SampleWm(vec3 n, vec3 wo, float alpha, vec2 u)
 {
 	float cosTheta = sqrt(max(0.0, (1.0 - pow(alpha, 1.0 - u.x)) / (1.0 - alpha)));
 	float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
 	float phi = 2.0 * u.y * Pi;
 
-	vec3 M = normalize(vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta));
-	if (!sameHemisphere(N, Wo, M))
-		M = -M;
-	return normalize(normalToWorld(N, M));
+	vec3 m = normalize(vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta));
+	if (!sameHemisphere(n, wo, m))
+		m = -m;
+	return normalize(normalToWorld(n, m));
 }
 
-float gtr1PdfWm(vec3 N, vec3 M, vec3 Wo, float alpha)
+float gtr1PdfWm(vec3 n, vec3 m, vec3 wo, float alpha)
 {
-	return gtr1D(N, M, alpha) * absDot(N, M);
+	return gtr1D(n, m, alpha) * absDot(n, m);
 }

@@ -3,6 +3,10 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#include <imgui/imgui.h>
+#include <imgui/imgui_impl_glfw.h>
+#include <imgui/imgui_impl_opengl3.h>
+
 #include <functional>
 #include <iostream>
 #include <fstream>
@@ -12,26 +16,27 @@
 #include <ctime>
 #include <map>
 
+#include "core/Buffer.h"
+#include "core/Camera.h"
+#include "core/CheckError.h"
+#include "core/FrameBuffer.h"
+#include "core/GLSizeofType.h"
+#include "core/Model.h"
+#include "core/RenderBuffer.h"
+#include "core/Pipeline.h"
+#include "core/Scene.h"
+#include "core/Texture.h"
+#include "core/VertexArray.h"
+#include "core/VerticalSync.h"
+#include "core/Sampler.h"
+#include "core/Integrator.h"
+#include "util/NamespaceDecl.h"
 #include "util/Error.h"
+#include "util/NamespaceDecl.h"
 
-class Application
-{
-public:
-	using InitFunc = std::function<void(int, int, GLFWwindow*)>;
-	using MainLoopFunc = std::function<void()>;
+NAMESPACE_BEGIN(Application)
 
-public:
-	Application(int width, int height, const std::string& title);
-	~Application();
+void init(int width, int height, const std::string& title);
+int run();
 
-	void bindInitFunc(InitFunc func) { mInitFunc = func; }
-	void bindMainLoopFunc(MainLoopFunc func) { mMainLoopFunc = func; }
-
-	int run();
-
-private:
-	GLFWwindow* mMainWindow = nullptr;
-
-	InitFunc mInitFunc;
-	MainLoopFunc mMainLoopFunc;
-};
+NAMESPACE_END(Application)

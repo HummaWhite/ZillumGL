@@ -1,12 +1,12 @@
 #pragma once
 
-#include "Accelerator/BVH.h"
+#include "../accelerator/BVH.h"
+#include "../math/AliasTable.h"
 #include "EnvironmentMap.h"
 #include "Texture.h"
 #include "Model.h"
 #include "Resource.h"
 #include "Camera.h"
-#include "Math/AliasTable.h"
 #include "Sampler.h"
 
 const std::string SceneConfigPath = "res/scene.xml";
@@ -46,18 +46,16 @@ public:
 	std::vector<Material> materials;
 	
 	EnvironmentMapPtr envMap;
-	bool sampleLight = true;
-	bool lightEnvUniformSample = false;
-	float lightPortion = 0.5f;
-	float envRotation = 0.0f;
 	float lightSumPdf = 0.0f;
 	int nLightTriangles = 0;
 	int objPrimCount = 0;
 
+	SceneGLContext glContext;
+	int vertexCount;
+	int triangleCount;
+	int boxCount;
+
 	Camera camera;
-	float focalDist;
-	float lensRadius;
-	int toneMapping = 2;
 	
 	int filmWidth, filmHeight;
 
@@ -68,8 +66,7 @@ public:
 	Texture2DPtr noiseTex;
 
 	bool aoMode;
-	int maxBounce;
 	glm::vec3 aoCoef = glm::vec3(1.0f);
 
-	SceneGLContext glContext;
+	float envRotation = 0.0f;
 };

@@ -1,6 +1,8 @@
 #include "Pipeline.h"
 #include "../util/Error.h"
 
+std::map<uint32_t, Pipeline::TextureBindParam> Pipeline::mImageBindRec;
+
 void Pipeline::setViewport(int x, int y, int width, int height)
 {
 	glViewport(x, y, width, height);
@@ -87,5 +89,22 @@ void Pipeline::bindTextureToImage(TexturePtr tex, uint32_t unit, int level, Imag
 {
 	if (!tex)
 		return;
-	glBindImageTexture(unit, tex->id(), level, false, 0, static_cast<GLenum>(access), static_cast<GLenum>(format));
+	if (canRebindTexture(tex->id(), { unit, level, access, format }))
+		glBindImageTexture(unit, tex->id(), level, false, 0, static_cast<GLenum>(access), static_cast<GLenum>(format));
+}
+
+bool Pipeline::canRebindTexture(uint32_t texId, const TextureBindParam& param)
+{
+	auto itr = mImageBindRec.find(texId);
+	if (itr == mImageBindRec.end())
+	{
+		mImageBindRec[texId] = param;
+		return true;
+	}
+	if (itr->second != param)
+	{
+		itr->second = param;
+		return true;
+	}
+	return false;
 }

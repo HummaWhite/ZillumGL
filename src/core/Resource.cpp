@@ -80,10 +80,12 @@ ModelInstancePtr Resource::createNewModelInstance(const File::path& path)
 
 	for (int i = 0; i < scene->mNumMaterials; i++)
 	{
-		aiMaterial* mat = scene->mMaterials[i];
+		aiMaterial* aiMat = scene->mMaterials[i];
 		aiColor3D albedo;
-		mat->Get(AI_MATKEY_COLOR_DIFFUSE, albedo);
-		model->mMaterials.push_back(Material(*(glm::vec3*) & albedo));
+		aiMat->Get(AI_MATKEY_COLOR_DIFFUSE, albedo);
+		Material mat;
+		mat.baseColor = *reinterpret_cast<glm::vec3*>(&albedo);
+		model->mMaterials.push_back(mat);
 	}
 	Error::line("\t[" + std::to_string(scene->mNumMaterials) + " material(s)]");
 	Error::line("\t[" + std::to_string(model->mMeshInstances.size()) + " mesh(es)]");

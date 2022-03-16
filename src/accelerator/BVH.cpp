@@ -1,5 +1,5 @@
 #include "BVH.h"
-#include "../../util/Error.h"
+#include "../util/Error.h"
 
 struct BoxRec
 {

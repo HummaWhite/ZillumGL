@@ -1,8 +1,11 @@
 @type lib
 
+@include math.glsl
+
 uniform vec3 uCamF;
 uniform vec3 uCamR;
 uniform vec3 uCamU;
+uniform mat3 uCamMatInv;
 uniform vec3 uCamPos;
 uniform float uTanFOV;
 uniform float uLensRadius;
@@ -10,7 +13,54 @@ uniform float uFocalDist;
 uniform float uCamAsp;
 uniform ivec2 uFilmSize;
 
-Ray sampleLensCamera(vec2 uv, inout Sampler s)
+struct CameraPdf
+{
+	float pdfPos;
+	float pdfDir;
+};
+
+CameraPdf cameraPdf(float pdfPos, float pdfDir)
+{
+	CameraPdf ret;
+	ret.pdfPos = pdfPos;
+	ret.pdfDir = pdfDir;
+	return ret;
+}
+
+struct CameraIiSample
+{
+	Ray ray;
+	vec3 Ie;
+	float dist;
+	vec2 uv;
+	float pdf;
+};
+
+CameraIiSample makeCameraIiSample(Ray ray, vec3 Ie, float dist, vec2 uv, float pdf)
+{
+	CameraIiSample ret;
+	ret.ray = ray;
+	ret.Ie = Ie;
+	ret.dist = dist;
+	ret.uv = uv;
+	ret.pdf = pdf;
+	return ret;
+}
+
+const CameraIiSample InvalidIiSample = makeCameraIiSample(
+	makeRay(vec3(0.0), vec3(0.0)), vec3(0.0), 0.0, vec2(0.0), 0);
+
+bool inFilmBound(vec2 uv)
+{
+	return uv.x >= 0 && uv.x <= 1.0 && uv.y >= 0 && uv.y <= 1.0;
+}
+
+bool thinLensCameraDelta()
+{
+	return uLensRadius <= 1e-6;
+}
+
+Ray thinLensCameraSampleRay(vec2 uv, inout Sampler s)
 {
 	vec2 texelSize = 1.0 / vec2(uFilmSize);
 	vec2 biasedCoord = uv + texelSize * sample2D(s);
@@ -25,4 +75,52 @@ Ray sampleLensCamera(vec2 uv, inout Sampler s)
 	ret.ori = uCamPos + uCamR * pLens.x + uCamU * pLens.y;
 	ret.dir = dir;
 	return ret;
+}
+
+vec2 thinLensCameraRasterPos(Ray ray)
+{
+	float cosTheta = dot(ray.dir, uCamF);
+	float dFocus = (thinLensCameraDelta() ? 1.0 : uFocalDist) / cosTheta;
+	vec3 pFocus = uCamMatInv * (rayPoint(ray, dFocus) - uCamPos);
+
+	vec2 filmSize = vec2(uFilmSize);
+	float aspect = filmSize.x / filmSize.y;
+
+	pFocus /= vec3(vec2(aspect, 1.0) * uTanFOV, 1.0) * uFocalDist;
+	vec2 ndc = pFocus.xy;
+	ndc.y = -ndc.y;
+	return (ndc + 1.0) * 0.5;
+}
+
+CameraIiSample thinLensCameraSampleIi(vec3 ref, vec2 u)
+{
+	vec3 pLens = vec3(toConcentricDisk(u) * uLensRadius, 0.0);
+	vec3 y = uCamPos + uCamR * pLens.x + uCamU * pLens.y + uCamF * pLens.z;
+	float dist = distance(ref, y);
+
+	vec3 wi = normalize(y - ref);
+	float cosTheta = satDot(uCamF, -wi);
+	if (cosTheta < 1e-6)
+		return InvalidIiSample;
+
+	Ray ray = makeRay(y, -wi);
+	vec2 uv = thinLensCameraRasterPos(ray);
+	float lensArea = thinLensCameraDelta() ? 1.0 : Pi * uLensRadius * uLensRadius;
+	float pdf = dist * dist / lensArea;
+}
+
+vec3 thinLensCameraIe(Ray ray)
+{
+	float cosTheta = dot(ray.dir, uCamF);
+	if (cosTheta < 1e-6)
+		return vec3(0.0);
+
+	vec2 pRaster = thinLensCameraRasterPos(ray);
+	if (!inFilmBound(pRaster))
+		return vec3(0.0);
+
+	float tanFOVInv = 1.0 / uTanFOV;
+	float cos2Theta = cosTheta * cosTheta;
+	float lensArea = thinLensCameraDelta() ? 1.0 : Pi * uLensRadius * uLensRadius;
+	return vec3(0.25) * square(tanFOVInv / cos2Theta) / lensArea;
 }

@@ -32,14 +32,20 @@ public:
 	void setAngle(glm::vec3 angle);
 	void setPlanes(float nearZ, float farZ);
 	void setAspect(float asp);
+	void setLensRadius(float radius);
+	void setFocalDist(float dist);
+	void setFilmSize(glm::ivec2 size);
 
 	glm::vec3 pos() const { return mPos; }
+	glm::vec3 angle() const { return mAngle; }
 	glm::vec3 front() const { return mFront; }
 	glm::vec3 right() const { return mRight; }
 	glm::vec3 up() const { return mUp; }
 	float FOV() const { return mFOV; }
 	float aspect() const { return mAspect; }
-	glm::vec3 angle() const { return mAngle; }
+	float lensRadius() const { return mLensRadius; }
+	float focalDist() const { return mFocalDist; }
+	glm::ivec2 filmSize() const { return mFilmSize; }
 
 	glm::mat4 viewMatrix() const;
 	glm::mat4 viewMatrix(glm::vec3 focus) const;
@@ -58,4 +64,7 @@ private:
 	float mNear = 0.1f;
 	float mFar = 100.0f;
 	float mAspect = 1.0f;
+	float mLensRadius = 0.0f;
+	float mFocalDist = 1.0f;
+	glm::ivec2 mFilmSize;
 };

@@ -16,11 +16,11 @@ public:
 	GLStateObject(GLStateObjectType type) : mType(type) {}
 
 	GLStateObjectType type() const { return mType; }
-	GLuint id() const { return mId; }
+	uint32_t id() const { return mId; }
 	bool hasGLHandle() const { return !mId; }
 
 protected:
-	GLuint mId = 0;
+	uint32_t mId = 0;
 
 private:
 	GLStateObjectType mType;

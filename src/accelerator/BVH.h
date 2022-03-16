@@ -5,8 +5,8 @@
 #include <stack>
 
 #include "AABB.h"
-#include "../Buffer.h"
-#include "../Model.h"
+#include "../core/Buffer.h"
+#include "../core/Model.h"
 
 const int BVH_LEAF_MASK = 0x80000000;
 

@@ -71,6 +71,8 @@ struct PipelineCreateInfo
 class Pipeline
 {
 public:
+	using TextureBindParam = std::tuple<uint32_t, int, ImageAccess, TextureFormat>;
+
 	Pipeline(const PipelineCreateInfo& createInfo) :
 		mPrimType(createInfo.primType), mPolyMode(createInfo.polyMode), mFaceToDraw(createInfo.faceToDraw),
 		mClearBuffer(createInfo.clearBuffer) {}
@@ -96,12 +98,16 @@ public:
 	static void bindTextureToImage(TexturePtr tex, uint32_t unit, int level, ImageAccess access, TextureFormat format);
 
 private:
+	static bool canRebindTexture(uint32_t texId, const TextureBindParam& param);
+
+private:
 	PrimitiveType mPrimType;
 	PolygonMode mPolyMode;
 	DrawFace mFaceToDraw;
 	BufferBit mClearBuffer;
 
 	FrameBufferPtr mFrameBuffer;
-
 	glm::ivec4 mViewport;
+
+	static std::map<uint32_t, TextureBindParam> mImageBindRec;
 };

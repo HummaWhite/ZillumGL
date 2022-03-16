@@ -4,21 +4,28 @@
 
 #include <sstream>
 
+std::tuple<glm::vec3, glm::vec3, glm::vec3> loadTransform(const pugi::xml_node& node)
+{
+	glm::vec3 pos, scale, rot;
+
+	std::stringstream posStr(node.attribute("translate").as_string());
+	posStr >> pos.x >> pos.y >> pos.z;
+
+	std::stringstream scaleStr(node.attribute("scale").as_string());
+	scaleStr >> scale.x >> scale.y >> scale.z;
+
+	std::stringstream rotStr(node.attribute("rotate").as_string());
+	rotStr >> rot.x >> rot.y >> rot.z;
+
+	return { pos, scale, rot };
+}
+
 std::pair<ModelInstancePtr, std::optional<glm::vec3>> loadModelInstance(const pugi::xml_node& modelNode)
 {
 	auto model = Resource::openModelInstance(modelNode.attribute("path").as_string(), glm::vec3(0.0f));
 
-	auto trans = modelNode.child("transform");
-	glm::vec3 pos, scale, rot;
-
-	std::stringstream posStr(trans.attribute("translate").as_string());
-	posStr >> pos.x >> pos.y >> pos.z;
-
-	std::stringstream scaleStr(trans.attribute("scale").as_string());
-	scaleStr >> scale.x >> scale.y >> scale.z;
-
-	std::stringstream rotStr(trans.attribute("rotate").as_string());
-	rotStr >> rot.x >> rot.y >> rot.z;
+	auto transNode = modelNode.child("transform");
+	auto [pos, scale, rot] = loadTransform(transNode);
 
 	model->setPos(pos);
 	model->setScale(scale.x, scale.y, scale.z);
@@ -33,32 +40,12 @@ std::pair<ModelInstancePtr, std::optional<glm::vec3>> loadModelInstance(const pu
 	}
 
 	auto matNode = modelNode.child("material");
-	std::string typeStr(matNode.attribute("type").as_string());
-	Error::bracketLine<1>("Material " + typeStr);
-
-	if (typeStr == "default")
+	auto material = loadMaterial(matNode);
+	if (!material)
 		return { model, std::nullopt };
 
-	Material mat;
-	
-	auto color = matNode.first_child();
-	auto metIor = color.next_sibling();
-	auto rough = metIor.next_sibling();
-
-	std::stringstream colorStr(color.attribute("value").as_string());
-	colorStr >> mat.albedo.r >> mat.albedo.g >> mat.albedo.b;
-
-	std::stringstream metIorStr(metIor.attribute("value").as_string());
-	metIorStr >> mat.metIor;
-
-	std::stringstream roughStr(rough.attribute("value").as_string());
-	roughStr >> mat.roughness;
-
-	mat.type = (typeStr == "metalWorkflow") ? 0 :
-		(typeStr == "dielectric") ? 1 : 2;
-
 	for (auto& m : model->materials())
-		m = mat;
+		m = material.value();
 
 	return { model, std::nullopt };
 }
@@ -74,7 +61,6 @@ void Scene::load()
 		auto integrator = scene.child("integrator");
 		std::string integStr(integrator.attribute("type").as_string());
 		aoMode = (integStr != "path");
-		maxBounce = integrator.child("maxBounce").attribute("value").as_int();
 		
 		auto size = integrator.child("size");
 		filmWidth = size.attribute("width").as_int();
@@ -83,7 +69,6 @@ void Scene::load()
 		auto toneMapping = integrator.child("toneMapping");
 		// TODO: load toneMapping
 		Error::bracketLine<1>("Integrator " + integStr);
-		Error::bracketLine<2>("MaxBounce " + std::to_string(maxBounce));
 	}
 	{
 		auto samplerNode = scene.child("sampler");
@@ -105,15 +90,15 @@ void Scene::load()
 		camera.setAngle(angle);
 		camera.setFOV(cameraNode.child("fov").attribute("value").as_float());
 		camera.setAspect(static_cast<float>(filmWidth) / filmHeight);
-		lensRadius = cameraNode.child("lensRadius").attribute("value").as_float();
-		focalDist = cameraNode.child("focalDistance").attribute("value").as_float();
+		camera.setLensRadius(cameraNode.child("lensRadius").attribute("value").as_float());
+		camera.setFocalDist(cameraNode.child("focalDistance").attribute("value").as_float());
 
 		Error::bracketLine<1>("Camera " + std::string(cameraNode.attribute("type").as_string()));
 		Error::bracketLine<2>("Position " + posStr);
 		Error::bracketLine<2>("Angle " + angleStr);
-		Error::bracketLine<2>("FOV " + std::string(cameraNode.child("fov").attribute("value").as_string()));
-		Error::bracketLine<2>("LensRadius " + std::to_string(lensRadius));
-		Error::bracketLine<2>("FocalDistance " + std::to_string(focalDist));
+		Error::bracketLine<2>("FOV " + std::to_string(camera.FOV()));
+		Error::bracketLine<2>("LensRadius " + std::to_string(camera.lensRadius()));
+		Error::bracketLine<2>("FocalDistance " + std::to_string(camera.focalDist()));
 	}
 	{
 		auto modelInstances = scene.child("modelInstances");
@@ -192,7 +177,7 @@ void Scene::createGLContext()
 		}
 	}
 
-	BVH bvh(vertices, indices, BVHSplitMethod::SAH);
+	BVH bvh(vertices, indices);
 	auto bvhBuf = bvh.build();
 
 	Error::bracketLine<0>("Scene generating light sampling table");
@@ -200,9 +185,9 @@ void Scene::createGLContext()
 	std::vector<glm::vec3> lightPower;
 	std::vector<float> pdf;
 
-	auto brightness = [](const glm::vec3& v) -> float
+	auto luminance = [](const glm::vec3& v) -> float
 	{
-		return glm::dot(v, glm::vec3(0.299f, 0.587f, 0.114f));
+		return glm::dot(v, glm::vec3(0.2126f, 0.7152f, 0.0722f));
 	};
 
 	for (const auto light : lights)
@@ -222,8 +207,8 @@ void Scene::createGLContext()
 				float area = 0.5f * glm::length(glm::cross(vc - va, vb - va));
 				glm::vec3 p = radiance * area * glm::pi<float>() * 2.0f;
 				lightPower.push_back(p);
-				pdf.push_back(brightness(p));
-				lightSumPdf += brightness(p);
+				pdf.push_back(luminance(p));
+				lightSumPdf += luminance(p);
 			}
 			nLightTriangles += meshData->indices.size() / 3;
 		}
@@ -237,7 +222,7 @@ void Scene::createGLContext()
 	glContext.bound = TextureBuffered::createFromVector(bvhBuf.bounds, TextureFormat::Col3x32f);
 	glContext.hitTable = TextureBuffered::createFromVector(bvhBuf.hitTable, TextureFormat::Col3x32i);
 	glContext.matTexIndex = TextureBuffered::createFromVector(matTexIndices, TextureFormat::Col1x32i);
-	glContext.material = TextureBuffered::createFromVector(materials, TextureFormat::Col3x32f);
+	glContext.material = TextureBuffered::createFromVector(materials, TextureFormat::Col4x32f);
 	glContext.lightPower = TextureBuffered::createFromVector(lightPower, TextureFormat::Col3x32f);
 	glContext.lightAlias = TextureBuffered::createFromVector(lightAlias, TextureFormat::Col1x32i);
 	glContext.lightProb = TextureBuffered::createFromVector(lightProb, TextureFormat::Col1x32f);
@@ -246,6 +231,10 @@ void Scene::createGLContext()
 
 	sobolTex = Sampler::genSobolSeqTexture(SampleNum, SampleDim);
 	noiseTex = Sampler::genNoiseTexture(filmWidth, filmHeight);
+
+	vertexCount = vertices.size();
+	triangleCount = vertices.size() / 3;
+	boxCount = bvhBuf.bounds.size();
 
 	Error::bracketLine<0>("Scene GL context created");
 }

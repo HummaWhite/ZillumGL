@@ -1,7 +1,5 @@
 @type lib
 
-@include env_light.glsl
-
 uniform samplerBuffer uLightPower;
 uniform isamplerBuffer uLightAlias;
 uniform samplerBuffer uLightProb;
@@ -11,11 +9,49 @@ uniform bool uLightEnvUniformSample;
 uniform float uLightSamplePortion;
 uniform int uObjPrimCount;
 
-vec3 lightGetRadiance(int id, vec3 x, vec3 Wo)
+uniform sampler2D uEnvMap;
+uniform isampler2D uEnvAliasTable;
+uniform sampler2D uEnvAliasProb;
+uniform float uEnvSum;
+uniform float uEnvRotation;
+
+struct LightPdf
+{
+	float pdfPos;
+	float pdfDir;
+};
+
+LightPdf makeLightPdf(float pdfPos, float pdfDir)
+{
+	LightPdf ret;
+	ret.pdfPos = pdfPos;
+	ret.pdfDir = pdfDir;
+	return ret;
+}
+
+struct LightLiSample
+{
+	vec3 wi;
+	vec3 coef;
+	float pdf;
+};
+
+LightLiSample makeLightLiSample(vec3 wi, vec3 coef, float pdf)
+{
+	LightLiSample ret;
+	ret.wi = wi;
+	ret.coef = coef;
+	ret.pdf = pdf;
+	return ret;
+}
+
+const LightLiSample InvalidLiSample = makeLightLiSample(vec3(0.0), vec3(0.0), 0.0);
+
+vec3 lightLe(int id, vec3 x, vec3 wo)
 {
 	int triId = id + uObjPrimCount;
 	SurfaceInfo sInfo = triangleSurfaceInfo(triId, x);
-	if (dot(Wo, sInfo.norm) <= 0.0) return vec3(0.0);
+	if (dot(wo, sInfo.norm) <= 0.0) return vec3(0.0);
 
 	return texelFetch(uLightPower, id).rgb / triangleArea(triId) * 0.5f * PiInv;
 }
@@ -23,17 +59,28 @@ vec3 lightGetRadiance(int id, vec3 x, vec3 Wo)
 float lightPdfLi(int id, vec3 x, vec3 y)
 {
 	int triId = id + uObjPrimCount;
-	vec3 N = triangleSurfaceInfo(triId, y).norm;
+	vec3 norm = triangleSurfaceInfo(triId, y).norm;
 	vec3 yx = normalize(x - y);
-	float cosTheta = absDot(N, yx);
+	float cosTheta = absDot(norm, yx);
 	if (cosTheta < 1e-8) return -1.0;
 
 	return distSquare(x, y) / (triangleArea(triId) * cosTheta);
 }
 
-LightSample lightSampleOne(vec3 x, vec4 u)
+LightPdf lightPdfLe(int id, Ray ray)
 {
-	LightSample ret;
+	LightPdf ret;
+	int triId = id + uObjPrimCount;
+	vec3 norm = triangleSurfaceInfo(triId, ray.ori).norm;
+
+	ret.pdfPos = 1.0 / triangleArea(triId);
+	ret.pdfDir = (dot(norm, ray.dir) <= 0) ? 0 : 0.5 * PiInv;
+	return ret;
+}
+
+LightLiSample lightSampleOne(vec3 x, vec4 u)
+{
+	LightLiSample ret;
 
 	int cx = int(float(uNumLightTriangles) * u.x);
 	float cy = u.y;
@@ -50,29 +97,85 @@ LightSample lightSampleOne(vec3 x, vec4 u)
 	vec3 c = texelFetch(uVertices, ic).xyz;
 
 	vec3 y = sampleTriangleUniform(a, b, c, u.zw);
-	vec3 Wi = normalize(y - x);
-	vec3 N = triangleSurfaceInfo(triId, y).norm;
-	float cosTheta = dot(N, -Wi);
-	if (cosTheta < 1e-6) return INVALID_LIGHT_SAMPLE;
+	vec3 wi = normalize(y - x);
+	vec3 norm = triangleSurfaceInfo(triId, y).norm;
+	float cosTheta = dot(norm, -wi);
+	if (cosTheta < 1e-6) return InvalidLiSample;
 
-	Ray lightRay;
-	lightRay.ori = x + Wi * 1e-4;
-	lightRay.dir = Wi;
+	Ray lightRay = rayOffseted(x, wi);
 
 	float dist = distance(x, y);
 	float pdf = dist * dist / (triangleArea(a, b, c) * cosTheta);
 
 	float testDist = dist - 1e-4 - 1e-6;
-	if (bvhTest(lightRay, testDist) || pdf < 1e-8) return INVALID_LIGHT_SAMPLE;
+	if (bvhTest(lightRay, testDist) || pdf < 1e-8) return InvalidLiSample;
 
-	vec3 weight = lightGetRadiance(id, y, -Wi);
+	vec3 weight = lightLe(id, y, -wi);
 
 	float pdfSample = luminance(texelFetch(uLightPower, id).rgb) / uLightSum;
 	pdf *= pdfSample;
-	return lightSample(Wi, weight / pdf, pdf);
+	return makeLightLiSample(wi, weight / pdf, pdf);
 }
 
-LightSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
+vec3 envLe(vec3 wi)
+{
+	wi = rotateZ(wi, -uEnvRotation);
+	return texture(uEnvMap, sphereToPlane(wi)).rgb;
+}
+
+float envGetPortion(vec3 wi)
+{
+	return luminance(envLe(wi)) / uEnvSum;
+}
+
+float envPdfLi(vec3 wi)
+{
+	if (uEnvSum == 0.0) return 0.0;
+	vec2 size = vec2(textureSize(uEnvMap, 0).xy);
+	return envGetPortion(wi) * size.x * size.y * 0.5f * square(PiInv);// / sqrt(1.0 - square(wi.z));
+}
+
+vec4 envImportanceSample(vec4 u)
+{
+	ivec2 size = textureSize(uEnvMap, 0).xy;
+	int w = size.x, h = size.y;
+
+	int rx = int(float(h) * u.x);
+	float ry = u.y;
+
+	ivec2 rTex = ivec2(w, rx);
+	int row = (ry < texelFetch(uEnvAliasProb, rTex, 0).r) ? rx : texelFetch(uEnvAliasTable, rTex, 0).r;
+
+	int cx = int(float(w) * u.z);
+	float cy = u.w;
+
+	ivec2 cTex = ivec2(cx, row);
+	int col = (cy < texelFetch(uEnvAliasProb, cTex, 0).r) ? cx : texelFetch(uEnvAliasTable, cTex, 0).r;
+
+	float sinTheta = sin(Pi * (float(row) + 0.5) / float(h));
+	vec2 uv = vec2(float(col) + 0.5, float(row + 0.5)) / vec2(float(w), float(h));
+	vec3 wi = planeToSphere(uv);
+	//float pdf = envPdfLi(wi);
+	wi = rotateZ(wi, uEnvRotation);
+	float pdf = envGetPortion(wi) * size.x * size.y * 0.5f * square(PiInv);
+	return vec4(wi, pdf);
+}
+
+LightLiSample envImportanceSample(vec3 x, vec4 u)
+{
+	vec4 sp = envImportanceSample(u);
+	vec3 wi = sp.xyz;
+	float pdf = sp.w;
+
+	Ray ray = rayOffseted(x, wi);
+	float dist = 1e8;
+	if (bvhTest(ray, dist) || pdf == 0.0)
+		return InvalidLiSample;
+
+	return makeLightLiSample(wi, envLe(wi) / pdf, pdf);
+}
+
+LightLiSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
 {
 	float pdfSampleLight = 0.0;
 
@@ -82,7 +185,7 @@ LightSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
 	bool sampleLight = ud < pdfSampleLight;
 	float pdfSelect = sampleLight ? pdfSampleLight : 1.0 - pdfSampleLight;
 
-	LightSample samp = sampleLight ? lightSampleOne(x, us) : envImportanceSample(x, us);
+	LightLiSample samp = sampleLight ? lightSampleOne(x, us) : envImportanceSample(x, us);
 	samp.coef /= pdfSelect;
 	samp.pdf *= pdfSelect;
 	return samp;

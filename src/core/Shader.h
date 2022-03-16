@@ -22,6 +22,60 @@ enum class ShaderType
 	Graphics, Compute
 };
 
+class ShaderUniform
+{
+public:
+	template<typename T>
+	ShaderUniform(const T& val)
+	{
+		*this = val;
+	}
+
+	ShaderUniform(const ShaderUniform& rhs)
+	{
+		if (ptr)
+			delete[] ptr;
+		size = rhs.size;
+		ptr = new uint8_t[size];
+		memcpy(ptr, rhs.ptr, size);
+	}
+
+	~ShaderUniform()
+	{
+		if (ptr)
+			delete[] ptr;
+	}
+
+	template<typename T>
+	void operator = (const T& val)
+	{
+		if (ptr)
+			delete[] ptr;
+		ptr = new uint8_t[sizeof(T)];
+		memcpy(ptr, &val, sizeof(T));
+		size = sizeof(T);
+	}
+
+	bool operator == (const ShaderUniform& rhs) const
+	{
+		if (size != rhs.size)
+			return false;
+		return memcmp(ptr, rhs.ptr, size) == 0;
+	}
+
+	template<typename T>
+	T value() const
+	{
+		T ret;
+		memcpy(&ret, ptr, size);
+		return ret;
+	}
+
+private:
+	uint8_t* ptr = nullptr;
+	uint8_t size = 0;
+};
+
 class Shader :
 	public GLStateObject
 {
@@ -29,26 +83,26 @@ public:
 	Shader(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr);
 	~Shader();
 
-	void enable() const;
-	void disable() const;
+	void enable();
+	void disable();
 
-	void set1i(const char* name, int v) const;
-	void set1f(const char* name, float v0) const;
-	void set2i(const char* name, int v0, int v1) const;
-	void set2f(const char* name, float v0, float v1) const;
-	void set3f(const char* name, float v0, float v1, float v2) const;
-	void set4f(const char* name, float v0, float v1, float v2, float v3) const;
+	void set1i(const std::string& name, int v);
+	void set1f(const std::string& name, float v0);
+	void set2i(const std::string& name, int v0, int v1);
+	void set2f(const std::string& name, float v0, float v1);
+	void set3f(const std::string& name, float v0, float v1, float v2);
+	void set4f(const std::string& name, float v0, float v1, float v2, float v3);
 
-	void setVec2(const char* name, const glm::vec2& vec) const;
-	void setVec3(const char* name, const glm::vec3& vec) const;
-	void setVec4(const char* name, const glm::vec4& vec) const;
-	void setMat3(const char* name, const glm::mat3& mat) const;
-	void setMat4(const char* name, const glm::mat4& mat) const;
+	void setVec2(const std::string& name, const glm::vec2& vec);
+	void setVec3(const std::string& name, const glm::vec3& vec);
+	void setVec4(const std::string& name, const glm::vec4& vec);
+	void setMat3(const std::string& name, const glm::mat3& mat);
+	void setMat4(const std::string& name, const glm::mat4& mat);
 
-	void setTexture(const char* name, TexturePtr tex, uint32_t slot);
+	void setTexture(const std::string& name, TexturePtr tex, uint32_t slot);
 
-	int getUniformLocation(const char* name) const;
-	static GLint getUniformLocation(GLuint programID, const char* name);
+	int getUniformLocation(const std::string& name) const;
+	static GLint getUniformLocation(GLuint programID, const std::string& name);
 
 	std::string name() const { return mName; }
 	ShaderType type() const { return mType; }
@@ -76,10 +130,30 @@ private:
 	void checkShaderCompileInfo(uint32_t shaderId, const std::string& name);
 	void checkShaderLinkInfo();
 
+	template<typename T>
+	bool canAssignUniform(const std::string& name, const T& val)
+	{
+		auto itr = mUniformRec.find(name);
+		if (itr == mUniformRec.end())
+		{
+			mUniformRec.insert({ name, ShaderUniform(val) });
+			return true;
+		}
+		auto unif = itr->second;
+		if (!(unif == val))
+		{
+			itr->second = val;
+			return true;
+		}
+		return false;
+	}
+
 private:
 	std::string mName;
 	ShaderType mType;
 
 	std::string mExtensionStr;
 	glm::ivec3 mComputeGroupSize;
+
+	std::map<std::string, ShaderUniform> mUniformRec;
 };

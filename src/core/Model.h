@@ -9,27 +9,10 @@
 
 #include "Shader.h"
 #include "Mesh.h"
+#include "Material.h"
 
 class ModelInstance;
 using ModelInstancePtr = std::shared_ptr<ModelInstance>;
-
-struct Material
-{
-	enum { MetalWorkflow = 0, Dielectric = 1, ThinDielectric = 2 };
-
-	Material() : Material(glm::vec3(1.0f)) {}
-
-	Material(const glm::vec3& albedo) :
-		albedo(albedo), metIor(0.0f), roughness(1.0f), type(MetalWorkflow) {}
-
-	Material(const glm::vec3& albedo, float metIor, float roughness, int type) :
-		albedo(albedo), metIor(metIor), roughness(roughness), type(type) {}
-
-	glm::vec3 albedo;
-	float metIor;
-	float roughness;
-	int type;
-};
 
 class ModelInstance
 {

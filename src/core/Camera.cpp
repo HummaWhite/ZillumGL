@@ -114,6 +114,21 @@ void Camera::setAspect(float asp)
 	mAspect = asp;
 }
 
+void Camera::setLensRadius(float radius)
+{
+	mLensRadius = radius;
+}
+
+void Camera::setFocalDist(float dist)
+{
+	mFocalDist = dist;
+}
+
+void Camera::setFilmSize(glm::ivec2 size)
+{
+	mFilmSize = size;
+}
+
 glm::mat4 Camera::viewMatrix() const
 {
 	float x = glm::sin(glm::radians(mAngle.x)) * glm::cos(glm::radians(mAngle.y));

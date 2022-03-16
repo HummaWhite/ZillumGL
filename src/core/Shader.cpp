@@ -35,89 +35,103 @@ Shader::~Shader()
 	glDeleteProgram(mId);
 }
 
-void Shader::enable() const
+void Shader::enable()
 {
 	glUseProgram(mId);
 }
 
-void Shader::disable() const
+void Shader::disable()
 {
 	glUseProgram(0);
 }
 
-void Shader::set1i(const char* name, int v) const
+void Shader::set1i(const std::string& name, int v)
 {
-	glProgramUniform1i(mId, getUniformLocation(name), v);
+	if (canAssignUniform(name, v))
+		glProgramUniform1i(mId, getUniformLocation(name), v);
 }
 
-void Shader::set1f(const char* name, float v0) const
+void Shader::set1f(const std::string& name, float v0)
 {
-	glProgramUniform1f(mId, getUniformLocation(name), v0);
+	if (canAssignUniform(name, v0))
+		glProgramUniform1f(mId, getUniformLocation(name), v0);
 }
 
-void Shader::set2i(const char* name, int v0, int v1) const
+void Shader::set2i(const std::string& name, int v0, int v1)
 {
-	glProgramUniform2i(mId, getUniformLocation(name), v0, v1);
+	if (canAssignUniform(name, glm::ivec2(v0, v1)))
+		glProgramUniform2i(mId, getUniformLocation(name), v0, v1);
 }
 
-void Shader::set2f(const char* name, float v0, float v1) const
+void Shader::set2f(const std::string& name, float v0, float v1)
 {
-	glProgramUniform2f(mId, getUniformLocation(name), v0, v1);
+	if (canAssignUniform(name, glm::vec2(v0, v1)))
+		glProgramUniform2f(mId, getUniformLocation(name), v0, v1);
 }
 
-void Shader::set3f(const char* name, float v0, float v1, float v2) const
+void Shader::set3f(const std::string& name, float v0, float v1, float v2)
 {
-	glProgramUniform3f(mId, getUniformLocation(name), v0, v1, v2);
+	if (canAssignUniform(name, glm::vec3(v0, v1, v2)))
+		glProgramUniform3f(mId, getUniformLocation(name), v0, v1, v2);
 }
 
-void Shader::set4f(const char* name, float v0, float v1, float v2, float v3) const
+void Shader::set4f(const std::string& name, float v0, float v1, float v2, float v3)
 {
-	glProgramUniform4f(mId, getUniformLocation(name), v0, v1, v2, v3);
+	if (canAssignUniform(name, glm::vec4(v0, v1, v2, v3)))
+		glProgramUniform4f(mId, getUniformLocation(name), v0, v1, v2, v3);
 }
 
-void Shader::setVec2(const char* name, const glm::vec2& vec) const
+void Shader::setVec2(const std::string& name, const glm::vec2& vec)
 {
-	glProgramUniform2f(mId, getUniformLocation(name), vec.x, vec.y);
+	if (canAssignUniform(name, vec))
+		glProgramUniform2f(mId, getUniformLocation(name), vec.x, vec.y);
 }
 
-void Shader::setVec3(const char* name, const glm::vec3& vec) const
+void Shader::setVec3(const std::string& name, const glm::vec3& vec)
 {
-	glProgramUniform3f(mId, getUniformLocation(name), vec.x, vec.y, vec.z);
+	if (canAssignUniform(name, vec))
+		glProgramUniform3f(mId, getUniformLocation(name), vec.x, vec.y, vec.z);
 }
 
-void Shader::setVec4(const char* name, const glm::vec4& vec) const
+void Shader::setVec4(const std::string& name, const glm::vec4& vec)
 {
-	glProgramUniform4f(mId, getUniformLocation(name), vec.x, vec.y, vec.z, vec.w);
+	if (canAssignUniform(name, vec))
+		glProgramUniform4f(mId, getUniformLocation(name), vec.x, vec.y, vec.z, vec.w);
 }
 
-void Shader::setMat3(const char* name, const glm::mat3& mat) const
+void Shader::setMat3(const std::string& name, const glm::mat3& mat)
 {
-	glProgramUniformMatrix3fv(mId, getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(mat));
+	if (canAssignUniform(name, mat))
+		glProgramUniformMatrix3fv(mId, getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(mat));
 }
 
-void Shader::setMat4(const char* name, const glm::mat4& mat) const
+void Shader::setMat4(const std::string& name, const glm::mat4& mat)
 {
-	glProgramUniformMatrix4fv(mId, getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(mat));
+	if (canAssignUniform(name, mat))
+		glProgramUniformMatrix4fv(mId, getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(mat));
 }
 
-void Shader::setTexture(const char* name, TexturePtr tex, uint32_t slot)
+void Shader::setTexture(const std::string& name, TexturePtr tex, uint32_t slot)
 {
-	glBindTextureUnit(slot, tex->id());
-	set1i(name, slot);
+	if (canAssignUniform(name, std::tuple<uint32_t, uint32_t>(tex->id(), slot)))
+	{
+		glBindTextureUnit(slot, tex->id());
+		set1i(name, slot);
+	}
 }
 
-int Shader::getUniformLocation(const char* name) const
+int Shader::getUniformLocation(const std::string& name) const
 {
-	GLint location = glGetUniformLocation(mId, name);
+	GLint location = glGetUniformLocation(mId, name.c_str());
 	if (location == -1)
 		std::cout << "[Unable to locate the uniform \"" << name << "\" in shader: " <<
-		mName << "]" << std::endl;
+			mName << "]" << std::endl;
 	return location;
 }
 
-GLint Shader::getUniformLocation(GLuint programID, const char* name)
+GLint Shader::getUniformLocation(GLuint programID, const std::string& name)
 {
-	GLint location = glGetUniformLocation(programID, name);
+	GLint location = glGetUniformLocation(programID, name.c_str());
 	if (location == -1)
 		std::cout << "[Unable to locate uniform \"" << name << "\" in shader numbered: " << programID <<
 		"]" << std::endl;
@@ -182,9 +196,11 @@ void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat sta
 				File::path incPath = ShaderDefaultDir / File::path(arg);
 				if (inclRec.find(incPath) != inclRec.end()) continue;
 
+				Error::bracketLine<1>("Included " + incPath.generic_string());
+
 				std::fstream file;
 				file.open(incPath);
-				Error::check(file.is_open(), "Included file not found");
+				Error::check(file.is_open(), "Included file not found " + incPath.generic_string());
 				loadShader(file, text, stat, inclRec);
 				inclRec[incPath] = true;
 				continue;

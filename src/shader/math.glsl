@@ -3,7 +3,7 @@
 
 const float Pi = 3.14159265358979323846;
 const float PiInv = 1.0 / Pi;
-const float INF = 1.0 / 0.0;
+const float Inf = 1.0 / 0.0;
 
 float square(float x)
 {
@@ -70,43 +70,43 @@ vec3 planeToSphere(vec2 uv)
 	return vec3(cos(theta) * sin(phi), sin(theta) * sin(phi), cos(phi));
 }
 
-vec3 getTangent(vec3 N)
+vec3 getTangent(vec3 n)
 {
-	return (abs(N.z) > 0.999) ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+	return (abs(n.z) > 0.999) ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
 }
 
-mat3 tbnMatrix(vec3 N)
+mat3 tbnMatrix(vec3 n)
 {
-	vec3 T = getTangent(N);
-	vec3 B = normalize(cross(N, T));
-	T = cross(B, N);
-	return mat3(T, B, N);
+	vec3 t = getTangent(n);
+	vec3 b = normalize(cross(n, t));
+	t = cross(b, n);
+	return mat3(t, b, n);
 }
 
-vec3 normalToWorld(vec3 N, vec3 v)
+vec3 normalToWorld(vec3 n, vec3 v)
 {
-	return normalize(tbnMatrix(N) * v);
+	return normalize(tbnMatrix(n) * v);
 }
 
-vec3 sampleUniformHemisphere(vec3 N, vec2 u)
+vec3 sampleUniformHemisphere(vec3 n, vec2 u)
 {
 	float theta = u.x * 2.0 * Pi;
 	float phi = u.y * 0.5 * Pi;
 	vec3 v = vec3(cos(theta) * sin(phi), sin(theta) * sin(phi), cos(phi));
-	return normalToWorld(N, v);
+	return normalToWorld(n, v);
 }
 
-vec4 sampleCosineWeighted(vec3 N, vec2 u)
+vec4 sampleCosineWeighted(vec3 n, vec2 u)
 {
 	vec2 uv = toConcentricDisk(u);
 	float z = sqrt(1.0 - dot(uv, uv));
-	vec3 v = normalToWorld(N, vec3(uv, z));
+	vec3 v = normalToWorld(n, vec3(uv, z));
 	return vec4(v, PiInv * z);
 }
 
-bool sameHemisphere(vec3 N, vec3 A, vec3 B)
+bool sameHemisphere(vec3 n, vec3 a, vec3 b)
 {
-	return dot(N, A) * dot(N, B) > 0;
+	return dot(n, a) * dot(n, b) > 0;
 }
 
 int maxExtent(vec3 v)

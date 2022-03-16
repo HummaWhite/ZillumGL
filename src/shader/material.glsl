@@ -51,17 +51,17 @@ struct PrincipledBRDF
 
 struct BsdfSample
 {
-	vec3 Wi;
+	vec3 wi;
 	float pdf;
 	vec3 bsdf;
 	float eta;
 	uint flag;
 };
 
-BsdfSample bsdfSample(vec3 Wi, float pdf, vec3 bsdf, float eta, uint flag)
+BsdfSample makeBsdfSample(vec3 wi, float pdf, vec3 bsdf, float eta, uint flag)
 {
 	BsdfSample samp;
-	samp.Wi = Wi;
+	samp.wi = wi;
 	samp.pdf = pdf;
 	samp.bsdf = bsdf;
 	samp.eta = eta;
@@ -69,28 +69,28 @@ BsdfSample bsdfSample(vec3 Wi, float pdf, vec3 bsdf, float eta, uint flag)
 	return samp;
 }
 
-const BsdfSample INVALID_SAMPLE = bsdfSample(vec3(0), 0, vec3(0), 0, Invalid);
+const BsdfSample InvalidBsdfSample = makeBsdfSample(vec3(0), 0, vec3(0), 0, Invalid);
 
 bool approximateDelta(float roughness)
 {
 	return roughness < 0.02;
 }
 
-vec3 metalWorkflowBsdf(vec3 Wo, vec3 Wi, vec3 N, vec3 albedo, float metallic, float roughness)
+vec3 metalWorkflowBsdf(vec3 wo, vec3 wi, vec3 n, vec3 albedo, float metallic, float roughness)
 {
 	float alpha = roughness * roughness;
-	vec3 H = normalize(Wi + Wo);
+	vec3 h = normalize(wi + wo);
 
-	if (!sameHemisphere(N, Wo, Wi)) return vec3(0.0);
+	if (!sameHemisphere(n, wo, wi)) return vec3(0.0);
 
-	float NdotL = dot(N, Wi);
-	float NdotV = dot(N, Wo);
+	float NdotL = dot(n, wi);
+	float NdotV = dot(n, wo);
 
 	vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-	vec3	F = schlickF(satDot(H, Wo), F0, roughness);
-	float	D = ggxD(N, H, alpha);
-	float	G = smithG(N, Wo, Wi, alpha);
+	vec3	F = schlickF(satDot(h, wo), F0, roughness);
+	float	D = ggxD(n, h, alpha);
+	float	G = smithG(n, wo, wi, alpha);
 
 	vec3 ks = F;
 	vec3 kd = vec3(1.0) - ks;
@@ -105,40 +105,40 @@ vec3 metalWorkflowBsdf(vec3 Wo, vec3 Wi, vec3 N, vec3 albedo, float metallic, fl
 	return kd * albedo * PiInv + glossy;
 }
 
-float metalWorkflowPdf(vec3 Wo, vec3 Wi, vec3 N, float metallic, float alpha)
+float metalWorkflowPdf(vec3 wo, vec3 wi, vec3 n, float metallic, float alpha)
 {
-	vec3 H = normalize(Wo + Wi);
-	float pdfDiff = satDot(N, Wi) * PiInv;
-	float pdfSpec = ggxPdfVisibleWm(N, H, Wo, alpha) / (4.0 * absDot(H, Wo));
+	vec3 h = normalize(wo + wi);
+	float pdfDiff = satDot(n, wi) * PiInv;
+	float pdfSpec = ggxPdfVisibleWm(n, h, wo, alpha) / (4.0 * absDot(h, wo));
 	float spec = 1.0f / (2.0f - metallic);
 	return mix(pdfDiff, pdfSpec, spec);
 }
 
-BsdfSample metalWorkflowSample(vec3 N, vec3 Wo, vec3 albedo, float metallic, float roughness, float u, vec2 u2)
+BsdfSample metalWorkflowSample(vec3 n, vec3 wo, vec3 albedo, float metallic, float roughness, float u, vec2 u2)
 {
 	float spec = 1.0 / (2.0 - metallic);
 	uint type = u > spec ? Diffuse : GlosRefl;
 	float alpha = square(roughness);
 
-	vec3 Wi;
-	if (type == Diffuse) Wi = sampleCosineWeighted(N, u2).xyz;
+	vec3 wi;
+	if (type == Diffuse) wi = sampleCosineWeighted(n, u2).xyz;
 	else
 	{
-		vec3 H = ggxSampleVisibleWm(N, Wo, alpha, u2);
-		Wi = reflect(-Wo, H);
+		vec3 h = ggxSampleVisibleWm(n, wo, alpha, u2);
+		wi = reflect(-wo, h);
 	}
 
-	float NoWi = dot(N, Wi);
-	if (NoWi < 0) return INVALID_SAMPLE;
+	float cosWi = dot(n, wi);
+	if (cosWi < 0) return InvalidBsdfSample;
 
-	vec3 bsdf = metalWorkflowBsdf(Wo, Wi, N, albedo, metallic, roughness);
-	float pdf = metalWorkflowPdf(Wo, Wi, N, metallic, alpha);
-	return bsdfSample(Wi, pdf, bsdf, 1.0, type);
+	vec3 bsdf = metalWorkflowBsdf(wo, wi, n, albedo, metallic, roughness);
+	float pdf = metalWorkflowPdf(wo, wi, n, metallic, alpha);
+	return makeBsdfSample(wi, pdf, bsdf, 1.0, type);
 }
 
-bool refract(out vec3 Wt, vec3 Wi, vec3 N, float eta)
+bool refract(out vec3 Wt, vec3 wi, vec3 n, float eta)
 {
-	float cosTi = dot(N, Wi);
+	float cosTi = dot(n, wi);
 	if (cosTi < 0) eta = 1.0 / eta;
 	float sin2Ti = max(0.0, 1.0 - cosTi * cosTi);
 	float sin2Tt = sin2Ti / (eta * eta);
@@ -147,7 +147,7 @@ bool refract(out vec3 Wt, vec3 Wi, vec3 N, float eta)
 
 	float cosTt = sqrt(1.0 - sin2Tt);
 	if (cosTi < 0) cosTt = -cosTt;
-	Wt = normalize(-Wi / eta + N * (cosTi / eta - cosTt));
+	Wt = normalize(-wi / eta + n * (cosTi / eta - cosTt));
 	return true;
 }
 
@@ -171,146 +171,146 @@ float fresnelDielectric(float cosTi, float eta)
 	return (rPa * rPa + rPe * rPe) * 0.5;
 }
 
-vec3 dielectricBsdf(vec3 Wo, vec3 Wi, vec3 N, vec3 tint, float ior, float roughness)
+vec3 dielectricBsdf(vec3 wo, vec3 wi, vec3 n, vec3 tint, float ior, float roughness)
 {
 	if (approximateDelta(roughness)) return vec3(0.0);
 
-	vec3 H = normalize(Wo + Wi);
+	vec3 h = normalize(wo + wi);
 
-	float HoWo = absDot(H, Wo);
-	float HoWi = absDot(H, Wi);
+	float hCosWo = absDot(h, wo);
+	float hCosWi = absDot(h, wi);
 	float alpha = roughness * roughness;
 
-	if (sameHemisphere(N, Wo, Wi))
+	if (sameHemisphere(n, wo, wi))
 	{
-		float refl = fresnelDielectric(absDot(H, Wi), ior);
-		return (HoWo * HoWi < 1e-7) ? vec3(0.0) : tint * ggxD(N, H, alpha) * smithG(N, Wo, Wi, alpha) / (4.0 * HoWo * HoWi) * refl;
+		float refl = fresnelDielectric(absDot(h, wi), ior);
+		return (hCosWo * hCosWi < 1e-7) ? vec3(0.0) : tint * ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) / (4.0 * hCosWo * hCosWi) * refl;
 	}
 	else
 	{
-		float eta = dot(N, Wi) > 0 ? ior : 1.0f / ior;
-		float sqrtDenom = dot(H, Wo) + eta * dot(H, Wi);
+		float eta = dot(n, wi) > 0 ? ior : 1.0f / ior;
+		float sqrtDenom = dot(h, wo) + eta * dot(h, wi);
 		float denom = sqrtDenom * sqrtDenom;
-		float dHdWi = HoWi / denom;
+		float dHdWi = hCosWi / denom;
 
-		denom *= absDot(N, Wi) * absDot(N, Wo);
-		float refl = fresnelDielectric(dot(H, Wi), eta);
+		denom *= absDot(n, wi) * absDot(n, wo);
+		float refl = fresnelDielectric(dot(h, wi), eta);
 		float factor = square(1.0 / eta);
 		factor = 1.0;
 
 		return (denom < 1e-7) ?
 			vec3(0.0) :
-			tint * abs(ggxD(N, H, alpha) * smithG(N, Wo, Wi, alpha) * HoWo * HoWi) / denom * (1.0 - refl) * factor;
+			tint * abs(ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) * hCosWo * hCosWi) / denom * (1.0 - refl) * factor;
 	}
 }
 
-float dielectricPdf(vec3 Wo, vec3 Wi, vec3 N, float ior, float roughness)
+float dielectricPdf(vec3 wo, vec3 wi, vec3 n, float ior, float roughness)
 {
 	if (approximateDelta(roughness)) return 0.0;
 
-	if (sameHemisphere(N, Wo, Wi))
+	if (sameHemisphere(n, wo, wi))
 	{
-		vec3 H = normalize(Wo + Wi);
-		if (dot(Wo, H) < 0.0) return 0.0;
+		vec3 h = normalize(wo + wi);
+		if (dot(wo, h) < 0.0) return 0.0;
 
-		float refl = fresnelDielectric(absDot(H, Wi), ior);
-		return ggxPdfWm(N, H, Wo, roughness * roughness) / (4.0 * absDot(H, Wo)) * refl;
+		float refl = fresnelDielectric(absDot(h, wi), ior);
+		return ggxPdfWm(n, h, wo, roughness * roughness) / (4.0 * absDot(h, wo)) * refl;
 	}
 	else
 	{
-		float eta = dot(N, Wo) > 0 ? ior : 1.0 / ior;
-		vec3 H = normalize(Wo + Wi * eta);
-		if (sameHemisphere(H, Wo, Wi)) return 0.0;
+		float eta = dot(n, wo) > 0 ? ior : 1.0 / ior;
+		vec3 h = normalize(wo + wi * eta);
+		if (sameHemisphere(h, wo, wi)) return 0.0;
 
-		float trans = 1.0f - fresnelDielectric(absDot(H, Wo), eta);
-		float dHdWi = absDot(H, Wi) / square(dot(H, Wo) + eta * dot(H, Wi));
-		return ggxPdfWm(N, H, Wo, roughness * roughness) * dHdWi * trans;
+		float trans = 1.0f - fresnelDielectric(absDot(h, wo), eta);
+		float dHdWi = absDot(h, wi) / square(dot(h, wo) + eta * dot(h, wi));
+		return ggxPdfWm(n, h, wo, roughness * roughness) * dHdWi * trans;
 	}
 }
 
-BsdfSample dielectricSample(vec3 N, vec3 Wo, vec3 tint, float ior, float roughness, float u, vec2 u2)
+BsdfSample dielectricSample(vec3 n, vec3 wo, vec3 tint, float ior, float roughness, float u, vec2 u2)
 {
 	if (approximateDelta(roughness))
 	{
-		float refl = fresnelDielectric(dot(N, Wo), ior), trans = 1.0 - refl;
+		float refl = fresnelDielectric(dot(n, wo), ior), trans = 1.0 - refl;
 
 		if (u < refl)
 		{
-			vec3 Wi = reflect(-Wo, N);
-			return bsdfSample(Wi, 1.0, tint, 1.0, SpecRefl);
+			vec3 wi = reflect(-wo, n);
+			return makeBsdfSample(wi, 1.0, tint, 1.0, SpecRefl);
 		}
 		else
 		{
-			vec3 Wi;
-			bool refr = refract(Wi, Wo, N, ior);
-			if (!refr) return INVALID_SAMPLE;
-			if (dot(N, Wo) < 0) ior = 1.0 / ior;
+			vec3 wi;
+			bool refr = refract(wi, wo, n, ior);
+			if (!refr) return InvalidBsdfSample;
+			if (dot(n, wo) < 0) ior = 1.0 / ior;
 			float factor = square(1.0 / ior);
 			factor = 1.0;
 
-			return bsdfSample(Wi, 1.0, tint * factor, ior, SpecTrans);
+			return makeBsdfSample(wi, 1.0, tint * factor, ior, SpecTrans);
 		}
 	}
 	else
 	{
 		float alpha = roughness * roughness;
-		vec3 H = ggxSampleWm(N, Wo, alpha, u2);
-		if (dot(N, H) < 0.0f) H = -H;
-		float refl = fresnelDielectric(dot(H, Wo), ior);
+		vec3 h = ggxSampleWm(n, wo, alpha, u2);
+		if (dot(n, h) < 0.0f) h = -h;
+		float refl = fresnelDielectric(dot(h, wo), ior);
 		float trans = 1.0f - refl;
 
 		if (u < refl)
 		{
-			vec3 Wi = -reflect(Wo, H);
-			if (!sameHemisphere(N, Wo, Wi)) return INVALID_SAMPLE;
+			vec3 wi = -reflect(wo, h);
+			if (!sameHemisphere(n, wo, wi)) return InvalidBsdfSample;
 
-			float p = ggxPdfWm(N, H, Wo, alpha) / (4.0f * absDot(H, Wo));
-			float HoWo = absDot(H, Wo);
-			float HoWi = absDot(H, Wi);
+			float p = ggxPdfWm(n, h, wo, alpha) / (4.0f * absDot(h, wo));
+			float hCosWo = absDot(h, wo);
+			float hCosWi = absDot(h, wi);
 
-			vec3 r = (HoWo * HoWi < 1e-7) ? vec3(0.0) :
-				tint * ggxD(N, H, alpha) * smithG(N, Wo, Wi, alpha) /
-				(4.0 * HoWo * HoWi);
+			vec3 r = (hCosWo * hCosWi < 1e-7) ? vec3(0.0) :
+				tint * ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) /
+				(4.0 * hCosWo * hCosWi);
 
 			if (isnan(p)) p = 0.0;
-			return bsdfSample(Wi, p, r, 1.0, GlosRefl);
+			return makeBsdfSample(wi, p, r, 1.0, GlosRefl);
 		}
 		else
 		{
-			vec3 Wi;
-			bool refr = refract(Wi, Wo, H, ior);
-			if (!refr) return INVALID_SAMPLE;
-			if (sameHemisphere(N, Wo, Wi)) return INVALID_SAMPLE;
-			if (absDot(N, Wi) < 1e-10) return INVALID_SAMPLE;
+			vec3 wi;
+			bool refr = refract(wi, wo, h, ior);
+			if (!refr) return InvalidBsdfSample;
+			if (sameHemisphere(n, wo, wi)) return InvalidBsdfSample;
+			if (absDot(n, wi) < 1e-10) return InvalidBsdfSample;
 
-			float HoWo = absDot(H, Wo);
-			float HoWi = absDot(H, Wi);
+			float hCosWo = absDot(h, wo);
+			float hCosWi = absDot(h, wi);
 
-			if (dot(H, Wo) < 0) ior = 1.0 / ior;
-			float sqrtDenom = dot(H, Wo) + ior * dot(H, Wi);
+			if (dot(h, wo) < 0) ior = 1.0 / ior;
+			float sqrtDenom = dot(h, wo) + ior * dot(h, wi);
 			float denom = sqrtDenom * sqrtDenom;
-			float dHdWi = HoWi / denom;
+			float dHdWi = hCosWi / denom;
 			float factor = square(1.0 / ior);
 			factor = 1.0;
 
-			denom *= absDot(N, Wi) * absDot(N, Wo);
+			denom *= absDot(n, wi) * absDot(n, wo);
 
 			vec3 t = (denom < 1e-7) ? vec3(0.0) :
 				tint *
-				abs(ggxD(N, H, alpha) * smithG(N, Wo, Wi, alpha) * HoWo * HoWi) / denom;
+				abs(ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) * hCosWo * hCosWi) / denom;
 
-			float p = ggxPdfWm(N, H, Wo, alpha) * dHdWi;
+			float p = ggxPdfWm(n, h, wo, alpha) * dHdWi;
 
 			if (isnan(p)) p = 0.0;
-			return bsdfSample(Wi, p, t * factor, ior, GlosTrans);
+			return makeBsdfSample(wi, p, t * factor, ior, GlosTrans);
 		}
 	}
 }
 
-BsdfSample thinDielectricSample(vec3 N, vec3 Wo, vec3 tint, float ior, float u, vec2 u2)
+BsdfSample thinDielectricSample(vec3 n, vec3 wo, vec3 tint, float ior, float u, vec2 u2)
 {
-	if (dot(N, Wo) < 0) N = -N;
-	float refl = fresnelDielectric(dot(N, Wo), ior);
+	if (dot(n, wo) < 0) n = -n;
+	float refl = fresnelDielectric(dot(n, wo), ior);
 	float trans = 1.0 - refl;
 	if (refl < 1.0)
 	{
@@ -320,97 +320,97 @@ BsdfSample thinDielectricSample(vec3 N, vec3 Wo, vec3 tint, float ior, float u, 
 
 	if (u < refl)
 	{
-		vec3 Wi = reflect(-Wo, N);
-		return bsdfSample(Wi, 1.0, tint, 1.0, SpecRefl);
+		vec3 wi = reflect(-wo, n);
+		return makeBsdfSample(wi, 1.0, tint, 1.0, SpecRefl);
 	}
-	return bsdfSample(-Wo, 1.0, tint, 1.0, SpecTrans);
+	return makeBsdfSample(-wo, 1.0, tint, 1.0, SpecTrans);
 }
 
-vec3 principledMetalBsdf(vec3 Wo, vec3 Wi, vec3 N, vec3 Fm0, float alpha)
+vec3 principledMetalBsdf(vec3 wo, vec3 wi, vec3 n, vec3 Fm0, float alpha)
 {
-	float NoWo = satDot(N, Wo);
-	float NoWi = satDot(N, Wi);
-	vec3 H = normalize(Wo + Wi);
-	if (NoWo < 1e-10 || NoWi < 1e-10)
+	float cosWo = satDot(n, wo);
+	float cosWi = satDot(n, wi);
+	vec3 h = normalize(wo + wi);
+	if (cosWo < 1e-10 || cosWi < 1e-10)
 		return vec3(0.0);
 
-	vec3 Fm = schlickF(absDot(H, Wo), Fm0);
-	float Dm = ggxD(N, H, alpha);
-	float Gm = smithG(N, Wo, Wi, alpha);
+	vec3 Fm = schlickF(absDot(h, wo), Fm0);
+	float Dm = ggxD(n, h, alpha);
+	float Gm = smithG(n, wo, wi, alpha);
 
-	float denom = 4.0 * NoWi * NoWo;
+	float denom = 4.0 * cosWi * cosWo;
 	if (denom < 1e-7)
 		return vec3(0.0);
 	return Fm * Dm * Gm / denom;
 }
 
-float principledMetalPdf(vec3 Wo, vec3 Wi, vec3 N, float alpha)
+float principledMetalPdf(vec3 wo, vec3 wi, vec3 n, float alpha)
 {
-	vec3 H = normalize(Wo + Wi);
-	return ggxPdfVisibleWm(N, H, Wo, alpha) / (4.0 * absDot(H, Wo));
+	vec3 h = normalize(wo + wi);
+	return ggxPdfVisibleWm(n, h, wo, alpha) / (4.0 * absDot(h, wo));
 }
 
-BsdfSample principledMetalSample(vec3 N, vec3 Wo, vec3 Fm0, float alpha, float u, vec2 u2)
+BsdfSample principledMetalSample(vec3 n, vec3 wo, vec3 Fm0, float alpha, float u, vec2 u2)
 {
-	vec3 H = ggxSampleVisibleWm(N, Wo, alpha, u2);
-	vec3 Wi = reflect(-Wo, H);
+	vec3 h = ggxSampleVisibleWm(n, wo, alpha, u2);
+	vec3 wi = reflect(-wo, h);
 
-	if (dot(N, Wi) < 0.0)
-		return INVALID_SAMPLE;
-	vec3 bsdf = principledMetalBsdf(Wo, Wi, N, Fm0, alpha);
-	float pdf = principledMetalPdf(Wo, Wi, N, alpha);
-	return bsdfSample(Wi, pdf, bsdf, 1.0, GlosRefl);
+	if (dot(n, wi) < 0.0)
+		return InvalidBsdfSample;
+	vec3 bsdf = principledMetalBsdf(wo, wi, n, Fm0, alpha);
+	float pdf = principledMetalPdf(wo, wi, n, alpha);
+	return makeBsdfSample(wi, pdf, bsdf, 1.0, GlosRefl);
 }
 
-vec3 principledClearcoatBsdf(vec3 Wo, vec3 Wi, vec3 N, vec3 baseColor, float alpha)
+vec3 principledClearcoatBsdf(vec3 wo, vec3 wi, vec3 n, vec3 baseColor, float alpha)
 {
-	float NoWo = satDot(N, Wo);
-	float NoWi = satDot(N, Wi);
-	vec3 H = normalize(Wo + Wi);
-	if (NoWo < 1e-6 || NoWi < 1e-6)
+	float cosWo = satDot(n, wo);
+	float cosWi = satDot(n, wi);
+	vec3 h = normalize(wo + wi);
+	if (cosWo < 1e-6 || cosWi < 1e-6)
 		return vec3(0.0);
 
-	vec3 Fc = schlickF(absDot(H, Wo), baseColor);
-	float Dc = gtr1D(N, H, alpha);
-	float Gc = smithG(N, Wo, Wi, 0.25);
+	vec3 Fc = schlickF(absDot(h, wo), baseColor);
+	float Dc = gtr1D(n, h, alpha);
+	float Gc = smithG(n, wo, wi, 0.25);
 
-	float denom = 4.0 * NoWi * NoWo;
+	float denom = 4.0 * cosWi * cosWo;
 	if (denom < 1e-7)
 		return vec3(0.0);
 	return Fc * Dc * Gc / denom;
 }
 
-float principledClearcoatPdf(vec3 Wo, vec3 Wi, vec3 N, float alpha)
+float principledClearcoatPdf(vec3 wo, vec3 wi, vec3 n, float alpha)
 {
-	vec3 H = normalize(Wo + Wi);
-	return gtr1PdfWm(N, H, Wo, alpha) / (4.0 * absDot(H, Wo));
+	vec3 h = normalize(wo + wi);
+	return gtr1PdfWm(n, h, wo, alpha) / (4.0 * absDot(h, wo));
 }
 
-BsdfSample principledClearcoatSample(vec3 N, vec3 Wo, vec3 baseColor, float alpha, float u, vec2 u2)
+BsdfSample principledClearcoatSample(vec3 n, vec3 wo, vec3 baseColor, float alpha, float u, vec2 u2)
 {
-	vec3 H = gtr1SampleWm(N, Wo, alpha, u2);
-	vec3 Wi = reflect(-Wo, H);
+	vec3 h = gtr1SampleWm(n, wo, alpha, u2);
+	vec3 wi = reflect(-wo, h);
 	
-	if (dot(N, Wi) < 0.0)
-		return INVALID_SAMPLE;
-	vec3 bsdf = principledClearcoatBsdf(Wo, Wi, N, baseColor, alpha);
-	float pdf = principledClearcoatPdf(Wo, Wi, N, alpha);
-	return bsdfSample(Wi, pdf, bsdf, 1.0, GlosRefl);
+	if (dot(n, wi) < 0.0)
+		return InvalidBsdfSample;
+	vec3 bsdf = principledClearcoatBsdf(wo, wi, n, baseColor, alpha);
+	float pdf = principledClearcoatPdf(wo, wi, n, alpha);
+	return makeBsdfSample(wi, pdf, bsdf, 1.0, GlosRefl);
 }
 
-vec3 principledDiffuseBsdf(vec3 Wo, vec3 Wi, vec3 N, vec3 baseColor, float subsurface, float roughness)
+vec3 principledDiffuseBsdf(vec3 wo, vec3 wi, vec3 n, vec3 baseColor, float subsurface, float roughness)
 {
-	float NoWo = satDot(N, Wo);
-	float NoWi = satDot(N, Wi);
-	if (NoWo < 1e-10 || NoWi < 1e-10)
+	float cosWo = satDot(n, wo);
+	float cosWi = satDot(n, wi);
+	if (cosWo < 1e-10 || cosWi < 1e-10)
 		return vec3(0.0);
 
-	vec3 H = normalize(Wo + Wi);
-	float HoWi = dot(H, Wi);
-	float HoWi2 = HoWi * HoWi;
+	vec3 h = normalize(wo + wi);
+	float hCosWi = dot(h, wi);
+	float HoWi2 = hCosWi * hCosWi;
 
-	float Fi = schlickW(NoWi);
-	float Fo = schlickW(NoWo);
+	float Fi = schlickW(cosWi);
+	float Fo = schlickW(cosWo);
 
 	vec3 Fd90 = vec3(0.5 + 2.0 * roughness * HoWi2);
 	vec3 Fd = mix(vec3(1.0), Fd90, Fi) * mix(vec3(1.0), Fd90, Fo);
@@ -418,20 +418,20 @@ vec3 principledDiffuseBsdf(vec3 Wo, vec3 Wi, vec3 N, vec3 baseColor, float subsu
 
 	vec3 Fss90 = vec3(roughness * HoWi2);
 	vec3 Fss = mix(vec3(1.0), Fss90, Fi) * mix(vec3(1.0), Fss90, Fo);
-	vec3 ss = baseColor * PiInv * 1.25 * (Fss * (1.0 / (NoWi + NoWo) - 0.5) + 0.5);
+	vec3 ss = baseColor * PiInv * 1.25 * (Fss * (1.0 / (cosWi + cosWo) - 0.5) + 0.5);
 
 	return mix(baseDiffuse, ss, subsurface);
 }
 
-BsdfSample principledDiffuseSample(vec3 N, vec3 Wo, vec3 baseColor, float subsurface, float roughness, float u, vec2 u2)
+BsdfSample principledDiffuseSample(vec3 n, vec3 wo, vec3 baseColor, float subsurface, float roughness, float u, vec2 u2)
 {
-	vec4 samp = sampleCosineWeighted(N, u2);
-	vec3 Wi = samp.xyz;
-	vec3 bsdf = principledDiffuseBsdf(Wo, Wi, N, baseColor, subsurface, roughness);
-	return bsdfSample(Wi, samp.w, bsdf, 1.0, Diffuse);
+	vec4 samp = sampleCosineWeighted(n, u2);
+	vec3 wi = samp.xyz;
+	vec3 bsdf = principledDiffuseBsdf(wo, wi, n, baseColor, subsurface, roughness);
+	return makeBsdfSample(wi, samp.w, bsdf, 1.0, Diffuse);
 }
 
-vec3 principledBsdf(vec3 Wo, vec3 Wi, vec3 N, PrincipledBRDF param)
+vec3 principledBsdf(vec3 wo, vec3 wi, vec3 n, PrincipledBRDF param)
 {
 	vec3 res = vec3(0.0);
 
@@ -451,17 +451,17 @@ vec3 principledBsdf(vec3 Wo, vec3 Wi, vec3 N, PrincipledBRDF param)
 	float lum = luminance(baseColor);
 	vec3 tintColor = lum > 0 ? baseColor / lum : vec3(1.0);
 	vec3 Fm0 = mix(0.08 * specular * mix(vec3(1.0), tintColor, specularTint), baseColor, metallic);
-	float HoWi = dot(normalize(Wo + Wi), Wi);
+	float hCosWi = dot(normalize(wo + wi), wi);
 
-	res += principledDiffuseBsdf(Wo, Wi, N, baseColor, subsurface, roughness) * (1.0 - metallic);
-	res += principledMetalBsdf(Wo, Wi, N, Fm0, alpha);
-	res += principledClearcoatBsdf(Wo, Wi, N, baseColor, clearcoatAlpha) * clearcoat * 0.25;
-	res += mix(vec3(1.0), tintColor, sheenTint) * schlickW(HoWi) * sheen * (dot(N, Wi) < 0.0 ? 0.0 : 1.0);
+	res += principledDiffuseBsdf(wo, wi, n, baseColor, subsurface, roughness) * (1.0 - metallic);
+	res += principledMetalBsdf(wo, wi, n, Fm0, alpha);
+	res += principledClearcoatBsdf(wo, wi, n, baseColor, clearcoatAlpha) * clearcoat * 0.25;
+	res += mix(vec3(1.0), tintColor, sheenTint) * schlickW(hCosWi) * sheen * (dot(n, wi) < 0.0 ? 0.0 : 1.0);
 
 	return res;
 }
 
-float principledPdf(vec3 Wo, vec3 Wi, vec3 N, PrincipledBRDF param)
+float principledPdf(vec3 wo, vec3 wi, vec3 n, PrincipledBRDF param)
 {
 	float pdf = 0.0;
 	vec3 baseColor = param.baseColor;
@@ -478,14 +478,14 @@ float principledPdf(vec3 Wo, vec3 Wi, vec3 N, PrincipledBRDF param)
 	float alpha = square(roughness);
 	float clearcoatAlpha = mix(0.1, 0.001, clearcoatGloss);
 	float spec = 1.0 / (2.0 - metallic);
-	float cosinePdf = absDot(N, Wi) * PiInv;
+	float cosinePdf = absDot(n, wi) * PiInv;
 	pdf += cosinePdf * (1.0 - spec);
-	pdf += principledMetalPdf(Wo, Wi, N, alpha) * spec;
-	pdf += principledClearcoatPdf(Wo, Wi, N, clearcoatAlpha) * 0.25 * clearcoat;
+	pdf += principledMetalPdf(wo, wi, n, alpha) * spec;
+	pdf += principledClearcoatPdf(wo, wi, n, clearcoatAlpha) * 0.25 * clearcoat;
 	return pdf / (1.0 + 0.25 * clearcoat);
 }
 
-BsdfSample principledSample(vec3 N, vec3 Wo, PrincipledBRDF param, float u, vec2 u2)
+BsdfSample principledSample(vec3 n, vec3 wo, PrincipledBRDF param, float u, vec2 u2)
 {
 	vec3 baseColor = param.baseColor;
 	float subsurface = param.subsurface;
@@ -502,7 +502,7 @@ BsdfSample principledSample(vec3 N, vec3 Wo, PrincipledBRDF param, float u, vec2
 	float clearcoatAlpha = mix(0.1, 0.001, clearcoatGloss);
 	float spec = 1.0 / (2.0 - metallic);
 
-	vec3 Wi;
+	vec3 wi;
 	float cdf[3];
 	cdf[0] = 1.0 - spec;
 	cdf[1] = 1.0;
@@ -510,18 +510,60 @@ BsdfSample principledSample(vec3 N, vec3 Wo, PrincipledBRDF param, float u, vec2
 
 	float s = rand() * cdf[2];
 	if (s <= cdf[0])
-		Wi = principledDiffuseSample(N, Wo, baseColor, subsurface, roughness, u, u2).Wi;
+		wi = principledDiffuseSample(n, wo, baseColor, subsurface, roughness, u, u2).wi;
 	else if (s <= cdf[1])
 	{
 		float lum = luminance(baseColor);
 		vec3 tintColor = lum > 0 ? baseColor / lum : vec3(1.0);
 		vec3 Fm0 = mix(0.08 * specular * mix(vec3(1.0), tintColor, specularTint), baseColor, metallic);
-		Wi = principledMetalSample(N, Wo, Fm0, alpha, u, u2).Wi;
+		wi = principledMetalSample(n, wo, Fm0, alpha, u, u2).wi;
 	}
 	else
-		Wi = principledClearcoatSample(N, Wo, baseColor, alpha, u, u2).Wi;
+		wi = principledClearcoatSample(n, wo, baseColor, alpha, u, u2).wi;
 
-	vec3 bsdf = principledBsdf(Wo, Wi, N, param);
-	float pdf = principledPdf(Wo, Wi, N, param);
-	return bsdfSample(Wi, pdf, bsdf, 1.0, Diffuse);
+	vec3 bsdf = principledBsdf(wo, wi, n, param);
+	float pdf = principledPdf(wo, wi, n, param);
+	return makeBsdfSample(wi, pdf, bsdf, 1.0, Diffuse);
+}
+
+uint getMaterialType(int matId)
+{
+	return texelFetch(uMatTypes, matId * 4 + 3).w;
+}
+
+MetalWorkflowBRDF loadMetalWorkflow(int matId, int texId, vec2 uv)
+{
+	MetalWorkflowBRDF ret;
+	if (texId == -1)
+		ret.baseColor = texelFetch(uMaterials, matId * 4 + 0).xyz;
+	else
+	{
+		vec2 uvScale = texelFetch(uTexUVScale, texId).xy;
+		ret.baseColor = texture2DArray(uTextures, vec3(fract(uv) * uvScale, texId)).rgb;
+	}
+	vec2 metRough = texelFetch(uMaterials, matId * 4 + 1).xy;
+	ret.metallic = mix(0.0134, 1.0, metRough.x);
+	ret.roughness = metRough.y;
+	return ret;
+}
+
+PrincipledBRDF loadPrincipledBRDF(int matId, int texId, vec2 uv)
+{
+	PrincipledBRDF ret;
+	vec4 baseColSS = texelFetch(uMaterials, matId * 4 + 0);
+	vec4 metRouSpecTint = texelFetch(uMaterials, matId * 4 + 1);
+	vec4 sheenTintCoatGloss = texelFetch(uMaterials, matId * 4 + 2);
+
+	ret.baseColor = (texId == -1) ? baseColSS.rgb :
+		texture2DArray(uTextures, vec3(fract(uv) * texelFetch(uTexUVScale, texId).xy, texId)).rgb;
+	ret.subsurface = baseColSS.w;
+	ret.metallic = metRouSpecTint.x;
+	ret.roughness = mix(0.0134, 1.0, metRouSpecTint.y);
+	ret.specular = metRouSpecTint.z;
+	ret.specularTint = metRouSpecTint.w;
+	ret.sheen = sheenTintCoatGloss.x;
+	ret.sheenTint = sheenTintCoatGloss.y;
+	ret.clearcoat = sheenTintCoatGloss.z;
+	ret.clearcoatGloss = sheenTintCoatGloss.w;
+	return ret;
 }
