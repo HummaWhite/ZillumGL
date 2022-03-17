@@ -95,10 +95,10 @@ public:
 	static void dispatchCompute(int xNum, int yNum, int zNum, ShaderPtr shader);
 	static void memoryBarrier(MemoryBarrierBit bits);
 
-	static void bindTextureToImage(TexturePtr tex, uint32_t unit, int level, ImageAccess access, TextureFormat format);
+	static void bindTextureToImage(TexturePtr texture, uint32_t unit, int level, ImageAccess access, TextureFormat format);
 
 private:
-	static bool canRebindTexture(uint32_t texId, const TextureBindParam& param);
+	static bool canRebindTexture(TexturePtr texture, const TextureBindParam& param);
 
 private:
 	PrimitiveType mPrimType;
@@ -109,5 +109,5 @@ private:
 	FrameBufferPtr mFrameBuffer;
 	glm::ivec4 mViewport;
 
-	static std::map<uint32_t, TextureBindParam> mImageBindRec;
+	static std::map<TexturePtr, TextureBindParam> mImageBindRec;
 };

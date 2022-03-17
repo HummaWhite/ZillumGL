@@ -1,7 +1,7 @@
 #include "Pipeline.h"
 #include "../util/Error.h"
 
-std::map<uint32_t, Pipeline::TextureBindParam> Pipeline::mImageBindRec;
+std::map<TexturePtr, Pipeline::TextureBindParam> Pipeline::mImageBindRec;
 
 void Pipeline::setViewport(int x, int y, int width, int height)
 {
@@ -85,20 +85,20 @@ void Pipeline::memoryBarrier(MemoryBarrierBit bits)
 	glMemoryBarrier(static_cast<GLbitfield>(bits));
 }
 
-void Pipeline::bindTextureToImage(TexturePtr tex, uint32_t unit, int level, ImageAccess access, TextureFormat format)
+void Pipeline::bindTextureToImage(TexturePtr texture, uint32_t unit, int level, ImageAccess access, TextureFormat format)
 {
-	if (!tex)
+	if (!texture)
 		return;
-	if (canRebindTexture(tex->id(), { unit, level, access, format }))
-		glBindImageTexture(unit, tex->id(), level, false, 0, static_cast<GLenum>(access), static_cast<GLenum>(format));
+	if (canRebindTexture(texture, { unit, level, access, format }))
+		glBindImageTexture(unit, texture->id(), level, false, 0, static_cast<GLenum>(access), static_cast<GLenum>(format));
 }
 
-bool Pipeline::canRebindTexture(uint32_t texId, const TextureBindParam& param)
+bool Pipeline::canRebindTexture(TexturePtr texture, const TextureBindParam& param)
 {
-	auto itr = mImageBindRec.find(texId);
+	auto itr = mImageBindRec.find(texture);
 	if (itr == mImageBindRec.end())
 	{
-		mImageBindRec[texId] = param;
+		mImageBindRec[texture] = param;
 		return true;
 	}
 	if (itr->second != param)

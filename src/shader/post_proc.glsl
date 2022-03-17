@@ -17,8 +17,6 @@ out vec4 FragColor;
 
 uniform sampler2D uFrame;
 uniform int uToneMapper;
-uniform bool uPreview;
-uniform int uPreviewScale;
 uniform float uResultScale;
 
 vec3 reinhard(vec3 color)
@@ -50,7 +48,7 @@ vec3 ACES(vec3 color)
 
 void main()
 {
-	vec2 uv = uPreview ? texCoord / float(uPreviewScale) : texCoord;
+	vec2 uv = texCoord;
 	vec3 color = texture(uFrame, uv).rgb * uResultScale;
 	
 	color = clamp(color, 0.0, 1e30);

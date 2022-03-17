@@ -25,19 +25,13 @@ namespace InputRecord
 namespace GLContext
 {
 	PipelinePtr pipeline;
-	Texture2DPtr frameTex;
 	VertexBufferPtr screenVB;
 	Scene scene;
 	ShaderPtr postShader;
+	glm::ivec2 frameSize;
 }
 
-namespace SampleCounter
-{
-	int curSpp = 0;
-	int freeCounter = 0;
-}
-
-namespace Settings
+namespace Config
 {
 	int uiMeshIndex = 0;
 	int uiMatIndex = 0;
@@ -53,29 +47,17 @@ namespace Settings
 	bool preview = true;
 	int previewScale = 8;
 
-	bool limitSpp = false;
-	int maxSpp = 64;
-
 	int toneMapping = 2;
-}
-
-bool count()
-{
-	using namespace SampleCounter;
-	using namespace Settings;
-	freeCounter++;
-	if (curSpp < maxSpp || !limitSpp)
-	{
-		curSpp++;
-		return true;
-	}
-	return false;
 }
 
 void reset()
 {
-	SampleCounter::curSpp = 0;
-	//GLContext::rayTraceShader->set1i("uSpp", SampleCounter::curSpp);
+	using namespace GLContext;
+	using namespace Config;
+	auto& integrator = integrators[uiIntegIndex];
+	glm::ivec2 resetFrameSize = preview ? frameSize / previewScale : frameSize;
+	integrator->setResetStatus({ &scene, resetFrameSize });
+	integrator->setShouldReset();
 }
 
 bool isPressing(int keyCode)
@@ -109,18 +91,18 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mode
 
 		if (key == GLFW_KEY_P)
 		{
-			Settings::preview ^= 1;
+			Config::preview ^= 1;
 			reset();
 		}
 		else if (key == GLFW_KEY_B)
 		{
-			Settings::showBVH ^= 1;
+			Config::showBVH ^= 1;
 			reset();
 		}
 		else if (key == GLFW_KEY_V)
 		{
-			Settings::verticalSync ^= 1;
-			VerticalSyncStatus(Settings::verticalSync);
+			Config::verticalSync ^= 1;
+			VerticalSyncStatus(Config::verticalSync);
 		}
 	}
 }
@@ -145,7 +127,6 @@ void cursorCallback(GLFWwindow* window, double posX, double posY)
 
 	lastCursorX = posX;
 	lastCursorY = posY;
-	//updateCameraUniforms();
 	reset();
 }
 
@@ -154,25 +135,16 @@ void scrollCallback(GLFWwindow* window, double offsetX, double offsetY)
 	if (!InputRecord::cursorDisabled)
 		return;
 	GLContext::scene.camera.changeFOV(offsetY);
-	//updateCameraUniforms();
 	reset();
 }
 
 void resizeCallback(GLFWwindow* window, int width, int height)
 {
 	Error::bracketLine<0>("Resize to " + std::to_string(width) + "x" + std::to_string(height));
-
 	using namespace GLContext;
-	frameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
-	frameTex->setFilter(TextureFilter::Nearest);
-	Pipeline::bindTextureToImage(frameTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
 	pipeline->setViewport(0, 0, width, height);
 	scene.camera.setAspect(static_cast<float>(width) / height);
-
-	//rayTraceShader->set2i("uFilmSize", width, height);
-	//rayTraceShader->set1f("uCamAsp", scene.camera.aspect());
-	//postShader->setTexture("uFrame", frameTex, 0);
-
+	frameSize = { width, height };
 	reset();
 }
 
@@ -190,6 +162,11 @@ void init(int width, int height, const std::string& title)
 
 	mainWindow = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
 	glfwMakeContextCurrent(mainWindow);
+
+	glfwSetKeyCallback(mainWindow, keyCallback);
+	glfwSetCursorPosCallback(mainWindow, cursorCallback);
+	glfwSetScrollCallback(mainWindow, scrollCallback);
+	glfwSetWindowSizeCallback(mainWindow, resizeCallback);
 
 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
 		Error::exit("failed to init GLAD");
@@ -227,17 +204,15 @@ void init(int width, int height, const std::string& title)
 	scene.load();
 	scene.createGLContext();
 
-	glfwSetKeyCallback(mainWindow, keyCallback);
-	glfwSetCursorPosCallback(mainWindow, cursorCallback);
-	glfwSetScrollCallback(mainWindow, scrollCallback);
-	glfwSetWindowSizeCallback(mainWindow, resizeCallback);
-
-	frameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
-	postShader = Shader::create("post_proc.glsl");
-	postShader->set1i("uToneMapper", Settings::toneMapping);
-	postShader->setTexture("uFrame", frameTex, 0);
-
 	integrators[0] = std::make_shared<PathIntegrator>();
+	auto& integrator = integrators[Config::uiIntegIndex];
+	integrator->init(scene, width, height);
+
+	postShader = Shader::create("post_proc.glsl");
+	postShader->set1i("uToneMapper", Config::toneMapping);
+	postShader->setTexture("uFrame", integrator->getFrame(), 0);
+
+	VerticalSyncStatus(Config::verticalSync);
 }
 
 void captureImage()
@@ -250,17 +225,62 @@ void captureImage()
 		+ std::to_string(img->height()));
 }
 
+void processKeys()
+{
+	const int Keys[] = { GLFW_KEY_W, GLFW_KEY_S, GLFW_KEY_A, GLFW_KEY_D,
+		GLFW_KEY_Q, GLFW_KEY_E, GLFW_KEY_R, GLFW_KEY_LEFT_SHIFT, GLFW_KEY_SPACE };
+
+	bool updated = false;
+	for (auto key : Keys)
+	{
+		if (isPressing(key))
+		{
+			GLContext::scene.camera.move(key);
+			updated = true;
+		}
+	}
+
+	if (updated)
+		reset();
+}
+
+void materialEditor(Scene& scene, int matIndex)
+{
+	auto& m = scene.materials[matIndex];
+	const char* matTypes[] = { "Principled", "MetalWorkflow", "Dielectric", "ThinDielectric" };
+	if (ImGui::Combo("Type", &m.type, matTypes, IM_ARRAYSIZE(matTypes)))
+	{
+		scene.glContext.material->write(sizeof(Material) * matIndex, sizeof(Material), &m);
+		reset();
+	}
+
+	if (m.type == Material::Principled)
+	{
+		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
+			ImGui::SliderFloat("Subsurface", &m.subsurface, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Metallic", &m.metallic, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Specular", &m.specular, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Specular tint", &m.specularTint, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Sheen", &m.sheen, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Sheen tint", &m.sheenTint, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Clearcoat", &m.clearcoat, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Clearcoat gloss", &m.clearcoatGloss, 0.0f, 1.0f))
+		{
+			scene.glContext.material->write(sizeof(Material) * matIndex, sizeof(Material), &m);
+			reset();
+		}
+	}
+}
+
 void renderGUI()
 {
 	using namespace GLContext;
-	using namespace Settings;
-	using namespace SampleCounter;
+	using namespace Config;
 
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
-
-	ImGui::ShowDemoWindow();
 
 	if (ImGui::BeginMainMenuBar())
 	{
@@ -297,17 +317,9 @@ void renderGUI()
 					reset();
 			}
 
-			if (ImGui::Checkbox("Limit spp     ", &limitSpp) && curSpp > maxSpp)
-				reset();
-			if (limitSpp)
-			{
-				ImGui::SetNextItemWidth(80.0f);
-				ImGui::SameLine();
-				if (ImGui::InputInt("Max spp      ", &maxSpp, 1, 10) && curSpp > maxSpp)
-					reset();
-			}
 			ImGui::PopItemWidth();
-			ImGui::SliderAngle("Env rotation", &scene.envRotation, -180.0f, 180.0f);
+			if (ImGui::SliderAngle("Env rotation", &scene.envRotation, -180.0f, 180.0f))
+				reset();
 			ImGui::Separator();
 
 			const char* IntegNames[] = { "Path", "LightPath", "TriPath", "BDPT" };
@@ -344,6 +356,13 @@ void renderGUI()
 			ImGui::EndMenu();
 		}
 
+		if (ImGui::BeginMenu("Material"))
+		{
+			ImGui::SliderInt("Index", &uiMatIndex, 0, scene.materials.size() - 1);
+			materialEditor(scene, uiMatIndex);
+			ImGui::EndMenu();
+		}
+
 		if (ImGui::BeginMenu("Statistics"))
 		{
 			ImGui::Text("BVH nodes:    %d", scene.boxCount);
@@ -375,10 +394,7 @@ void renderGUI()
 		ImGuiWindowFlags_NoFocusOnAppearing |
 		ImGuiWindowFlags_NoNav))
 	{
-		if (limitSpp)
-			ImGui::Text("Spp: %d/%d", curSpp, maxSpp);
-		else
-			ImGui::Text("Spp: %d", curSpp);
+		integrators[uiIntegIndex]->renderProgressGUI();
 		ImGui::Text("Render Time: %.3f ms, FPS: %.3f", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 		ImGui::End();
 	}
@@ -391,20 +407,21 @@ void renderGUI()
 int run()
 {
 	using namespace GLContext;
-	using namespace Settings;
+	using namespace Config;
 
 	glfwShowWindow(mainWindow);
 	while (true)
 	{
 		if (glfwWindowShouldClose(mainWindow))
 			return 0;
+		processKeys();
 
-		// integrator->renderTo(frameTex);
+		auto& integrator = integrators[uiIntegIndex];
+		integrator->renderOnePass();
 
 		pipeline->clear({ 0.0f, 0.0f, 0.0f, 1.0f });
-		postShader->set1i("uPreview", preview);
-		postShader->set1i("uPreviewScale", previewScale);
-		postShader->set1f("uResultScale", 1.0f / (SampleCounter::curSpp + 1));
+		postShader->setTexture("uFrame", integrator->getFrame(), 0);
+		postShader->set1f("uResultScale", integrator->resultScale());
 		pipeline->draw(screenVB, VertexArray::layoutPos2(), postShader);
 
 		renderGUI();
