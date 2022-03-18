@@ -120,22 +120,24 @@ void Shader::setTexture(const std::string& name, TexturePtr tex, uint32_t slot)
 	}
 }
 
-int Shader::getUniformLocation(const std::string& name) const
+int Shader::getUniformLocation(const std::string& name)
 {
 	GLint location = glGetUniformLocation(mId, name.c_str());
 	if (location == -1)
-		std::cout << "[Unable to locate the uniform \"" << name << "\" in shader: " <<
-			mName << "]" << std::endl;
+	{
+		if (mMissingUniforms.find(name) == mMissingUniforms.end())
+		{
+			std::cout << "[Unable to locate the uniform \"" << name << "\" in shader: " <<
+				mName << "]" << std::endl;
+			mMissingUniforms.insert(name);
+		}
+	}
 	return location;
 }
 
-GLint Shader::getUniformLocation(GLuint programID, const std::string& name)
+int Shader::getUniformLocation(GLuint programID, const std::string& name)
 {
-	GLint location = glGetUniformLocation(programID, name.c_str());
-	if (location == -1)
-		std::cout << "[Unable to locate uniform \"" << name << "\" in shader numbered: " << programID <<
-		"]" << std::endl;
-	return location;
+	return glGetUniformLocation(programID, name.c_str());
 }
 
 ShaderPtr Shader::create(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr)

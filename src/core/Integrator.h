@@ -56,7 +56,7 @@ struct PathIntegParam
 	int maxSample = 64;
 };
 
-class PathIntegrator :
+class NaivePathIntegrator :
 	public Integrator
 {
 public:
@@ -135,7 +135,24 @@ class BDPTIntegrator;
 class BVHDisplayIntegrator :
 	public Integrator
 {
+public:
+	void init(const Scene& scene, int width, int height);
+	void renderOnePass();
+	void reset(const Scene& scene, int width, int height);
+	void renderSettingsGUI() {}
+	void renderProgressGUI();
+
+	TexturePtr getFrame() { return mFrameTex; }
+	float resultScale() const { return 1.0f; }
+
+	void setMatIndex(int index) { mMatIndex = index; }
+
+private:
+	void recreateFrameTex(int width, int height);
+	void updateUniforms(const Scene& scene, int width, int height);
+
 private:
 	Texture2DPtr mFrameTex;
 	ShaderPtr mShader;
+	int mMatIndex = 0;
 };

@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <map>
+#include <set>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -101,8 +102,8 @@ public:
 
 	void setTexture(const std::string& name, TexturePtr tex, uint32_t slot);
 
-	int getUniformLocation(const std::string& name) const;
-	static GLint getUniformLocation(GLuint programID, const std::string& name);
+	int getUniformLocation(const std::string& name);
+	static int getUniformLocation(GLuint programID, const std::string& name);
 
 	std::string name() const { return mName; }
 	ShaderType type() const { return mType; }
@@ -156,4 +157,5 @@ private:
 	glm::ivec3 mComputeGroupSize;
 
 	std::map<std::string, ShaderUniform> mUniformRec;
+	std::set<std::string> mMissingUniforms;
 };

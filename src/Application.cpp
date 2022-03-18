@@ -10,7 +10,10 @@ std::pair<int, int> getWindowSize(GLFWwindow* window)
 NAMESPACE_BEGIN(Application)
 
 GLFWwindow* mainWindow = nullptr;
-IntegratorPtr integrators[4];
+
+std::shared_ptr<NaivePathIntegrator> naivePathTracer;
+std::shared_ptr<BVHDisplayIntegrator> bvhDisplayer;
+IntegratorPtr integrator;
 
 namespace InputRecord
 {
@@ -54,7 +57,6 @@ void reset()
 {
 	using namespace GLContext;
 	using namespace Config;
-	auto& integrator = integrators[uiIntegIndex];
 	glm::ivec2 resetFrameSize = preview ? frameSize / previewScale : frameSize;
 	integrator->setResetStatus({ &scene, resetFrameSize });
 	integrator->setShouldReset();
@@ -204,9 +206,12 @@ void init(int width, int height, const std::string& title)
 	scene.load();
 	scene.createGLContext();
 
-	integrators[0] = std::make_shared<PathIntegrator>();
-	auto& integrator = integrators[Config::uiIntegIndex];
-	integrator->init(scene, width, height);
+	naivePathTracer = std::make_shared<NaivePathIntegrator>();
+	naivePathTracer->init(scene, width, height);
+	bvhDisplayer = std::make_shared<BVHDisplayIntegrator>();
+	bvhDisplayer->init(scene, width, height);
+
+	integrator = naivePathTracer;
 
 	postShader = Shader::create("post_proc.glsl");
 	postShader->set1i("uToneMapper", Config::toneMapping);
@@ -300,8 +305,6 @@ void renderGUI()
 		{
 			ImGui::Text("General");
 			ImGui::PushItemWidth(200.0f);
-			if (ImGui::Checkbox("Display BVH   ", &showBVH))
-				reset();
 
 			ImGui::SameLine();
 			if (ImGui::Checkbox("Vertical sync ", &verticalSync))
@@ -322,12 +325,14 @@ void renderGUI()
 				reset();
 			ImGui::Separator();
 
-			const char* IntegNames[] = { "Path", "LightPath", "TriPath", "BDPT" };
+			const char* IntegNames[] = { "Path", "BVHDisplay" };
+			IntegratorPtr integs[] = { naivePathTracer, bvhDisplayer };
 			if (ImGui::Combo("Integrator", &uiIntegIndex, IntegNames, IM_ARRAYSIZE(IntegNames)))
 			{
-				//integrators[uiIntegIndex]->reset();
+				integrator = integs[uiIntegIndex];
+				reset();
 			}
-			integrators[uiIntegIndex]->renderSettingsGUI();
+			integrator->renderSettingsGUI();
 
 			ImGui::EndMenu();
 		}
@@ -359,6 +364,8 @@ void renderGUI()
 		if (ImGui::BeginMenu("Material"))
 		{
 			ImGui::SliderInt("Index", &uiMatIndex, 0, scene.materials.size() - 1);
+			bvhDisplayer->setMatIndex(uiMatIndex);
+			bvhDisplayer->setShouldReset();
 			materialEditor(scene, uiMatIndex);
 			ImGui::EndMenu();
 		}
@@ -394,7 +401,7 @@ void renderGUI()
 		ImGuiWindowFlags_NoFocusOnAppearing |
 		ImGuiWindowFlags_NoNav))
 	{
-		integrators[uiIntegIndex]->renderProgressGUI();
+		integrator->renderProgressGUI();
 		ImGui::Text("Render Time: %.3f ms, FPS: %.3f", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 		ImGui::End();
 	}
@@ -416,7 +423,6 @@ int run()
 			return 0;
 		processKeys();
 
-		auto& integrator = integrators[uiIntegIndex];
 		integrator->renderOnePass();
 
 		pipeline->clear({ 0.0f, 0.0f, 0.0f, 1.0f });

@@ -3,14 +3,14 @@
 const int WorkgroupSizeX = 48;
 const int WorkgroupSizeY = 32;
 
-void PathIntegrator::recreateFrameTex(int width, int height)
+void NaivePathIntegrator::recreateFrameTex(int width, int height)
 {
 	mFrameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
 	mFrameTex->setFilter(TextureFilter::Nearest);
 	Pipeline::bindTextureToImage(mFrameTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
 }
 
-void PathIntegrator::updateUniforms(const Scene& scene, int width, int height)
+void NaivePathIntegrator::updateUniforms(const Scene& scene, int width, int height)
 {
 	auto& sceneBuffers = scene.glContext;
 	mShader->setTexture("uVertices", sceneBuffers.vertex, 1);
@@ -62,7 +62,7 @@ void PathIntegrator::updateUniforms(const Scene& scene, int width, int height)
 	mShader->set1f("uLightSamplePortion", mParam.lightPortion);
 }
 
-void PathIntegrator::init(const Scene& scene, int width, int height)
+void NaivePathIntegrator::init(const Scene& scene, int width, int height)
 {
 	mShader = Shader::create("path_integ_naive.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 },
 		"#extension GL_EXT_texture_array : enable\n");
@@ -70,7 +70,7 @@ void PathIntegrator::init(const Scene& scene, int width, int height)
 	updateUniforms(scene, width, height);
 }
 
-void PathIntegrator::renderOnePass()
+void NaivePathIntegrator::renderOnePass()
 {
 	mFreeCounter++;
 	if (mShouldReset)
@@ -98,7 +98,7 @@ void PathIntegrator::renderOnePass()
 	mCurSample++;
 }
 
-void PathIntegrator::reset(const Scene& scene, int width, int height)
+void NaivePathIntegrator::reset(const Scene& scene, int width, int height)
 {
 	if (width != mFrameTex->width() && height != mFrameTex->height())
 		recreateFrameTex(width, height);
@@ -106,7 +106,7 @@ void PathIntegrator::reset(const Scene& scene, int width, int height)
 	mCurSample = 0;
 }
 
-void PathIntegrator::renderSettingsGUI()
+void NaivePathIntegrator::renderSettingsGUI()
 {
 	ImGui::SetNextItemWidth(80.0f);
 	if (ImGui::SliderInt("Max depth", &mParam.maxDepth, 0, 32))
@@ -143,7 +143,7 @@ void PathIntegrator::renderSettingsGUI()
 	}
 }
 
-void PathIntegrator::renderProgressGUI()
+void NaivePathIntegrator::renderProgressGUI()
 {
 	if (mParam.finiteSample)
 		ImGui::ProgressBar(static_cast<float>(mCurSample) / mParam.maxSample);
