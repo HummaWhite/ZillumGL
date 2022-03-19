@@ -1,39 +1,26 @@
 @type lib
 @include microfacet.glsl
 
-const uint Diffuse = 1 << 0;
-const uint GlosRefl = 1 << 1;
-const uint GlosTrans = 1 << 2;
-const uint SpecRefl = 1 << 3;
-const uint SpecTrans = 1 << 4;
-const uint Invalid = 1 << 16;
+#define BSDFFlag uint
+const BSDFFlag Diffuse = 1 << 0;
+const BSDFFlag GlosRefl = 1 << 1;
+const BSDFFlag GlosTrans = 1 << 2;
+const BSDFFlag SpecRefl = 1 << 3;
+const BSDFFlag SpecTrans = 1 << 4;
+const BSDFFlag Invalid = 1 << 16;
 
-const uint Principled = 0;
-const uint MetalWorkflow = 1;
-const uint Dielectric = 2;
-const uint ThinDielectric = 3;
+#define BSDFType uint
+const BSDFType PrincipledBRDF = 0;
+const BSDFType MetalWorkflow = 1;
+const BSDFType Dielectric = 2;
+const BSDFType ThinDielectric = 3;
+const BSDFType Lambertian = 4;
 
-struct MetalWorkflowBRDF
-{
-	vec3 baseColor;
-	float metallic;
-	float roughness;
-};
+#define TransportMode uint
+const TransportMode Radiance = 0;
+const TransportMode Importance = 1;
 
-struct DielectricBSDF
-{
-	vec3 baseColor;
-	float ior;
-	float roughness;
-};
-
-struct ThinDielectricBSDF
-{
-	vec3 baseColor;
-	float ior;
-};
-
-struct PrincipledBRDF
+struct BSDFParam
 {
 	vec3 baseColor;
 	float subsurface;
@@ -47,9 +34,11 @@ struct PrincipledBRDF
 	float sheenTint;
 	float clearcoat;
 	float clearcoatGloss;
+
+	float ior;
 };
 
-struct BsdfSample
+struct BSDFSample
 {
 	vec3 wi;
 	float pdf;
@@ -58,9 +47,9 @@ struct BsdfSample
 	uint flag;
 };
 
-BsdfSample makeBsdfSample(vec3 wi, float pdf, vec3 bsdf, float eta, uint flag)
+BSDFSample makeBSDFSample(vec3 wi, float pdf, vec3 bsdf, float eta, BSDFFlag flag)
 {
-	BsdfSample samp;
+	BSDFSample samp;
 	samp.wi = wi;
 	samp.pdf = pdf;
 	samp.bsdf = bsdf;
@@ -69,85 +58,109 @@ BsdfSample makeBsdfSample(vec3 wi, float pdf, vec3 bsdf, float eta, uint flag)
 	return samp;
 }
 
-const BsdfSample InvalidBsdfSample = makeBsdfSample(vec3(0), 0, vec3(0), 0, Invalid);
+const BSDFSample InvalidBSDFSample = makeBSDFSample(vec3(0), 0, vec3(0), 0, Invalid);
 
 bool approximateDelta(float roughness)
 {
 	return roughness < 0.02;
 }
 
-vec3 metalWorkflowBsdf(vec3 wo, vec3 wi, vec3 n, vec3 albedo, float metallic, float roughness)
+vec3 lambertian(vec3 wo, vec3 wi, vec3 n, BSDFParam param, TransportMode mode)
 {
-	float alpha = roughness * roughness;
+	return param.baseColor * PiInv;
+}
+
+float lambertianPdf(vec3 wo, vec3 wi, vec3 n, BSDFParam param, TransportMode mode)
+{
+	return satDot(wi, n) * PiInv;
+}
+
+BSDFSample lambertianSample(vec3 n, vec3 wo, BSDFParam param, TransportMode mode, vec3 u)
+{
+	vec3 wi = sampleCosineWeighted(n, u.yz).xyz;
+	float pdf = satDot(n, wi) * PiInv;
+	return makeBSDFSample(wi, pdf, param.baseColor * PiInv, 1.0, Diffuse);
+}
+
+vec3 metalWorkflow(vec3 wo, vec3 wi, vec3 n, BSDFParam param, TransportMode mode)
+{
+	vec3 baseColor = param.baseColor;
+	float metallic = param.metallic;
+	float roughness = param.roughness;
+	float alpha = square(roughness);
 	vec3 h = normalize(wi + wo);
 
-	if (!sameHemisphere(n, wo, wi)) return vec3(0.0);
+	if (!sameHemisphere(n, wo, wi))
+		return vec3(0.0);
 
-	float NdotL = dot(n, wi);
-	float NdotV = dot(n, wo);
+	float cosWi = dot(n, wi);
+	float cosWo = dot(n, wo);
 
-	vec3 F0 = mix(vec3(0.04), albedo, metallic);
+	vec3 f0 = mix(vec3(0.04), baseColor, metallic);
 
-	vec3	F = schlickF(satDot(h, wo), F0, roughness);
-	float	D = ggxD(n, h, alpha);
-	float	G = smithG(n, wo, wi, alpha);
+	vec3 f = schlickF(satDot(h, wo), f0, roughness);
+	float d = ggxD(n, h, alpha);
+	float g = smithG(n, wo, wi, alpha);
 
-	vec3 ks = F;
+	vec3 ks = f;
 	vec3 kd = vec3(1.0) - ks;
 	kd *= 1.0 - metallic;
 
-	vec3 FDG = F * D * G;
-	float denom = 4.0 * NdotV * NdotL;
-	if (denom < 1e-7) return vec3(0.0);
+	float denom = 4.0 * cosWo * cosWi;
+	if (denom < 1e-7)
+		return vec3(0.0);
 
-	vec3 glossy = FDG / denom;
-
-	return kd * albedo * PiInv + glossy;
+	return kd * baseColor * PiInv + f * d * g / denom;
 }
 
-float metalWorkflowPdf(vec3 wo, vec3 wi, vec3 n, float metallic, float alpha)
+float metalWorkflowPdf(vec3 wo, vec3 wi, vec3 n, BSDFParam param, TransportMode mode)
 {
+	float alpha = square(param.roughness);
 	vec3 h = normalize(wo + wi);
 	float pdfDiff = satDot(n, wi) * PiInv;
 	float pdfSpec = ggxPdfVisibleWm(n, h, wo, alpha) / (4.0 * absDot(h, wo));
-	float spec = 1.0f / (2.0f - metallic);
+	float spec = 1.0f / (2.0f - param.metallic);
 	return mix(pdfDiff, pdfSpec, spec);
 }
 
-BsdfSample metalWorkflowSample(vec3 n, vec3 wo, vec3 albedo, float metallic, float roughness, float u, vec2 u2)
+BSDFSample metalWorkflowSample(vec3 n, vec3 wo, BSDFParam param, TransportMode mode, vec3 u)
 {
-	float spec = 1.0 / (2.0 - metallic);
-	uint type = u > spec ? Diffuse : GlosRefl;
+	float roughness = param.roughness;
 	float alpha = square(roughness);
 
+	float spec = 1.0 / (2.0 - param.metallic);
+	uint type = u.x > spec ? Diffuse : GlosRefl;
+
 	vec3 wi;
-	if (type == Diffuse) wi = sampleCosineWeighted(n, u2).xyz;
+	if (type == Diffuse) wi = sampleCosineWeighted(n, u.yz).xyz;
 	else
 	{
-		vec3 h = ggxSampleVisibleWm(n, wo, alpha, u2);
+		vec3 h = ggxSampleVisibleWm(n, wo, alpha, u.yz);
 		wi = reflect(-wo, h);
 	}
 
 	float cosWi = dot(n, wi);
-	if (cosWi < 0) return InvalidBsdfSample;
+	if (cosWi < 0)
+		return InvalidBSDFSample;
 
-	vec3 bsdf = metalWorkflowBsdf(wo, wi, n, albedo, metallic, roughness);
-	float pdf = metalWorkflowPdf(wo, wi, n, metallic, alpha);
-	return makeBsdfSample(wi, pdf, bsdf, 1.0, type);
+	vec3 bsdf = metalWorkflow(wo, wi, n, param, mode);
+	float pdf = metalWorkflowPdf(wo, wi, n, param, mode);
+	return makeBSDFSample(wi, pdf, bsdf, 1.0, type);
 }
 
-bool refract(out vec3 Wt, vec3 wi, vec3 n, float eta)
+bool refract(out vec3 wt, vec3 wi, vec3 n, float eta)
 {
 	float cosTi = dot(n, wi);
 	if (cosTi < 0) eta = 1.0 / eta;
 	float sin2Ti = max(0.0, 1.0 - cosTi * cosTi);
 	float sin2Tt = sin2Ti / (eta * eta);
 
-	if (sin2Tt >= 1.0) return false;
+	if (sin2Tt >= 1.0)
+		return false;
 
 	float cosTt = sqrt(1.0 - sin2Tt);
 	if (cosTi < 0) cosTt = -cosTt;
-	Wt = normalize(-wi / eta + n * (cosTi / eta - cosTt));
+	wt = normalize(-wi / eta + n * (cosTi / eta - cosTt));
 	return true;
 }
 
@@ -162,7 +175,8 @@ float fresnelDielectric(float cosTi, float eta)
 
 	float sinTi = sqrt(1.0 - cosTi * cosTi);
 	float sinTt = sinTi / eta;
-	if (sinTt >= 1.0) return 1.0;
+	if (sinTt >= 1.0)
+		return 1.0;
 
 	float cosTt = sqrt(1.0 - sinTt * sinTt);
 
@@ -171,9 +185,14 @@ float fresnelDielectric(float cosTi, float eta)
 	return (rPa * rPa + rPe * rPe) * 0.5;
 }
 
-vec3 dielectricBsdf(vec3 wo, vec3 wi, vec3 n, vec3 tint, float ior, float roughness)
+vec3 dielectric(vec3 wo, vec3 wi, vec3 n, BSDFParam param, TransportMode mode)
 {
-	if (approximateDelta(roughness)) return vec3(0.0);
+	vec3 baseColor = param.baseColor;
+	float roughness = param.roughness;
+	float ior = param.ior;
+
+	if (approximateDelta(roughness))
+		return vec3(0.0);
 
 	vec3 h = normalize(wo + wi);
 
@@ -184,7 +203,7 @@ vec3 dielectricBsdf(vec3 wo, vec3 wi, vec3 n, vec3 tint, float ior, float roughn
 	if (sameHemisphere(n, wo, wi))
 	{
 		float refl = fresnelDielectric(absDot(h, wi), ior);
-		return (hCosWo * hCosWi < 1e-7) ? vec3(0.0) : tint * ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) / (4.0 * hCosWo * hCosWi) * refl;
+		return (hCosWo * hCosWi < 1e-7) ? vec3(0.0) : baseColor * ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) / (4.0 * hCosWo * hCosWi) * refl;
 	}
 	else
 	{
@@ -195,23 +214,26 @@ vec3 dielectricBsdf(vec3 wo, vec3 wi, vec3 n, vec3 tint, float ior, float roughn
 
 		denom *= absDot(n, wi) * absDot(n, wo);
 		float refl = fresnelDielectric(dot(h, wi), eta);
-		float factor = square(1.0 / eta);
-		factor = 1.0;
+		float factor = (mode == Radiance) ? square(1.0 / eta) : 1.0;
 
 		return (denom < 1e-7) ?
 			vec3(0.0) :
-			tint * abs(ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) * hCosWo * hCosWi) / denom * (1.0 - refl) * factor;
+			baseColor * abs(ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) * hCosWo * hCosWi) / denom * (1.0 - refl) * factor;
 	}
 }
 
-float dielectricPdf(vec3 wo, vec3 wi, vec3 n, float ior, float roughness)
+float dielectricPdf(vec3 wo, vec3 wi, vec3 n, BSDFParam param, TransportMode mode)
 {
-	if (approximateDelta(roughness)) return 0.0;
+	float roughness = param.roughness;
+	float ior = param.ior;
+	if (approximateDelta(roughness))
+		return 0.0;
 
 	if (sameHemisphere(n, wo, wi))
 	{
 		vec3 h = normalize(wo + wi);
-		if (dot(wo, h) < 0.0) return 0.0;
+		if (dot(wo, h) < 0.0)
+			return 0.0;
 
 		float refl = fresnelDielectric(absDot(h, wi), ior);
 		return ggxPdfWm(n, h, wo, roughness * roughness) / (4.0 * absDot(h, wo)) * refl;
@@ -220,97 +242,106 @@ float dielectricPdf(vec3 wo, vec3 wi, vec3 n, float ior, float roughness)
 	{
 		float eta = dot(n, wo) > 0 ? ior : 1.0 / ior;
 		vec3 h = normalize(wo + wi * eta);
-		if (sameHemisphere(h, wo, wi)) return 0.0;
+		if (sameHemisphere(h, wo, wi))
+			return 0.0;
 
-		float trans = 1.0f - fresnelDielectric(absDot(h, wo), eta);
+		float trans = 1.0 - fresnelDielectric(absDot(h, wo), eta);
 		float dHdWi = absDot(h, wi) / square(dot(h, wo) + eta * dot(h, wi));
 		return ggxPdfWm(n, h, wo, roughness * roughness) * dHdWi * trans;
 	}
 }
 
-BsdfSample dielectricSample(vec3 n, vec3 wo, vec3 tint, float ior, float roughness, float u, vec2 u2)
+BSDFSample dielectricSample(vec3 n, vec3 wo, BSDFParam param, TransportMode mode, vec3 u)
 {
+	vec3 baseColor = param.baseColor;
+	float roughness = param.roughness;
+	float ior = param.ior;
+
 	if (approximateDelta(roughness))
 	{
-		float refl = fresnelDielectric(dot(n, wo), ior), trans = 1.0 - refl;
+		float refl = fresnelDielectric(dot(n, wo), ior);
+		float trans = 1.0 - refl;
 
-		if (u < refl)
+		if (u.x < refl)
 		{
 			vec3 wi = reflect(-wo, n);
-			return makeBsdfSample(wi, 1.0, tint, 1.0, SpecRefl);
+			return makeBSDFSample(wi, 1.0, baseColor, 1.0, SpecRefl);
 		}
 		else
 		{
 			vec3 wi;
 			bool refr = refract(wi, wo, n, ior);
-			if (!refr) return InvalidBsdfSample;
-			if (dot(n, wo) < 0) ior = 1.0 / ior;
-			float factor = square(1.0 / ior);
-			factor = 1.0;
+			if (!refr)
+				return InvalidBSDFSample;
 
-			return makeBsdfSample(wi, 1.0, tint * factor, ior, SpecTrans);
+			if (dot(n, wo) < 0)
+				ior = 1.0 / ior;
+			float factor = (mode == Radiance) ? square(1.0 / ior) : 1.0;
+			return makeBSDFSample(wi, 1.0, baseColor * factor, ior, SpecTrans);
 		}
 	}
 	else
 	{
 		float alpha = roughness * roughness;
-		vec3 h = ggxSampleWm(n, wo, alpha, u2);
+		vec3 h = ggxSampleWm(n, wo, alpha, u.yz);
 		if (dot(n, h) < 0.0f) h = -h;
 		float refl = fresnelDielectric(dot(h, wo), ior);
 		float trans = 1.0f - refl;
 
-		if (u < refl)
+		if (u.x < refl)
 		{
 			vec3 wi = -reflect(wo, h);
-			if (!sameHemisphere(n, wo, wi)) return InvalidBsdfSample;
+			if (!sameHemisphere(n, wo, wi))
+				return InvalidBSDFSample;
 
 			float p = ggxPdfWm(n, h, wo, alpha) / (4.0f * absDot(h, wo));
 			float hCosWo = absDot(h, wo);
 			float hCosWi = absDot(h, wi);
 
 			vec3 r = (hCosWo * hCosWi < 1e-7) ? vec3(0.0) :
-				tint * ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) /
+				baseColor * ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) /
 				(4.0 * hCosWo * hCosWi);
 
 			if (isnan(p)) p = 0.0;
-			return makeBsdfSample(wi, p, r, 1.0, GlosRefl);
+			return makeBSDFSample(wi, p, r, 1.0, GlosRefl);
 		}
 		else
 		{
 			vec3 wi;
 			bool refr = refract(wi, wo, h, ior);
-			if (!refr) return InvalidBsdfSample;
-			if (sameHemisphere(n, wo, wi)) return InvalidBsdfSample;
-			if (absDot(n, wi) < 1e-10) return InvalidBsdfSample;
+			if (!refr) return InvalidBSDFSample;
+			if (sameHemisphere(n, wo, wi)) return InvalidBSDFSample;
+			if (absDot(n, wi) < 1e-10) return InvalidBSDFSample;
 
 			float hCosWo = absDot(h, wo);
 			float hCosWi = absDot(h, wi);
 
-			if (dot(h, wo) < 0) ior = 1.0 / ior;
+			if (dot(h, wo) < 0)
+				ior = 1.0 / ior;
 			float sqrtDenom = dot(h, wo) + ior * dot(h, wi);
 			float denom = sqrtDenom * sqrtDenom;
 			float dHdWi = hCosWi / denom;
-			float factor = square(1.0 / ior);
-			factor = 1.0;
+			float factor = (mode == Radiance) ? square(1.0 / ior) : 1.0;
 
 			denom *= absDot(n, wi) * absDot(n, wo);
 
 			vec3 t = (denom < 1e-7) ? vec3(0.0) :
-				tint *
+				baseColor *
 				abs(ggxD(n, h, alpha) * smithG(n, wo, wi, alpha) * hCosWo * hCosWi) / denom;
 
 			float p = ggxPdfWm(n, h, wo, alpha) * dHdWi;
 
 			if (isnan(p)) p = 0.0;
-			return makeBsdfSample(wi, p, t * factor, ior, GlosTrans);
+			return makeBSDFSample(wi, p, t * factor, ior, GlosTrans);
 		}
 	}
 }
 
-BsdfSample thinDielectricSample(vec3 n, vec3 wo, vec3 tint, float ior, float u, vec2 u2)
+BSDFSample thinDielectricSample(vec3 n, vec3 wo, BSDFParam param, TransportMode mode, vec3 u)
 {
-	if (dot(n, wo) < 0) n = -n;
-	float refl = fresnelDielectric(dot(n, wo), ior);
+	if (dot(n, wo) < 0)
+		n = -n;
+	float refl = fresnelDielectric(dot(n, wo), param.ior);
 	float trans = 1.0 - refl;
 	if (refl < 1.0)
 	{
@@ -318,15 +349,12 @@ BsdfSample thinDielectricSample(vec3 n, vec3 wo, vec3 tint, float ior, float u, 
 		trans = 1.0 - refl;
 	}
 
-	if (u < refl)
-	{
-		vec3 wi = reflect(-wo, n);
-		return makeBsdfSample(wi, 1.0, tint, 1.0, SpecRefl);
-	}
-	return makeBsdfSample(-wo, 1.0, tint, 1.0, SpecTrans);
+	return (u.x < refl) ?
+		makeBSDFSample(reflect(-wo, n), 1.0, param.baseColor, 1.0, SpecRefl) :
+		makeBSDFSample(-wo, 1.0, param.baseColor, 1.0, SpecTrans);
 }
 
-vec3 principledMetalBsdf(vec3 wo, vec3 wi, vec3 n, vec3 Fm0, float alpha)
+vec3 principledMetal(vec3 wo, vec3 wi, vec3 n, vec3 fm0, float alpha)
 {
 	float cosWo = satDot(n, wo);
 	float cosWi = satDot(n, wi);
@@ -334,14 +362,14 @@ vec3 principledMetalBsdf(vec3 wo, vec3 wi, vec3 n, vec3 Fm0, float alpha)
 	if (cosWo < 1e-10 || cosWi < 1e-10)
 		return vec3(0.0);
 
-	vec3 Fm = schlickF(absDot(h, wo), Fm0);
-	float Dm = ggxD(n, h, alpha);
-	float Gm = smithG(n, wo, wi, alpha);
+	vec3 fm = schlickF(absDot(h, wo), fm0);
+	float dm = ggxD(n, h, alpha);
+	float gm = smithG(n, wo, wi, alpha);
 
 	float denom = 4.0 * cosWi * cosWo;
 	if (denom < 1e-7)
 		return vec3(0.0);
-	return Fm * Dm * Gm / denom;
+	return fm * dm * gm / denom;
 }
 
 float principledMetalPdf(vec3 wo, vec3 wi, vec3 n, float alpha)
@@ -350,19 +378,19 @@ float principledMetalPdf(vec3 wo, vec3 wi, vec3 n, float alpha)
 	return ggxPdfVisibleWm(n, h, wo, alpha) / (4.0 * absDot(h, wo));
 }
 
-BsdfSample principledMetalSample(vec3 n, vec3 wo, vec3 Fm0, float alpha, float u, vec2 u2)
+BSDFSample principledMetalSample(vec3 n, vec3 wo, vec3 fm0, float alpha, vec3 u)
 {
-	vec3 h = ggxSampleVisibleWm(n, wo, alpha, u2);
+	vec3 h = ggxSampleVisibleWm(n, wo, alpha, u.yz);
 	vec3 wi = reflect(-wo, h);
 
 	if (dot(n, wi) < 0.0)
-		return InvalidBsdfSample;
-	vec3 bsdf = principledMetalBsdf(wo, wi, n, Fm0, alpha);
+		return InvalidBSDFSample;
+	vec3 bsdf = principledMetal(wo, wi, n, fm0, alpha);
 	float pdf = principledMetalPdf(wo, wi, n, alpha);
-	return makeBsdfSample(wi, pdf, bsdf, 1.0, GlosRefl);
+	return makeBSDFSample(wi, pdf, bsdf, 1.0, GlosRefl);
 }
 
-vec3 principledClearcoatBsdf(vec3 wo, vec3 wi, vec3 n, vec3 baseColor, float alpha)
+vec3 principledClearcoat(vec3 wo, vec3 wi, vec3 n, vec3 baseColor, float alpha)
 {
 	float cosWo = satDot(n, wo);
 	float cosWi = satDot(n, wi);
@@ -370,14 +398,14 @@ vec3 principledClearcoatBsdf(vec3 wo, vec3 wi, vec3 n, vec3 baseColor, float alp
 	if (cosWo < 1e-6 || cosWi < 1e-6)
 		return vec3(0.0);
 
-	vec3 Fc = schlickF(absDot(h, wo), baseColor);
-	float Dc = gtr1D(n, h, alpha);
-	float Gc = smithG(n, wo, wi, 0.25);
+	vec3 fc = schlickF(absDot(h, wo), baseColor);
+	float dc = gtr1D(n, h, alpha);
+	float gc = smithG(n, wo, wi, 0.25);
 
 	float denom = 4.0 * cosWi * cosWo;
 	if (denom < 1e-7)
 		return vec3(0.0);
-	return Fc * Dc * Gc / denom;
+	return fc * dc * gc / denom;
 }
 
 float principledClearcoatPdf(vec3 wo, vec3 wi, vec3 n, float alpha)
@@ -386,19 +414,19 @@ float principledClearcoatPdf(vec3 wo, vec3 wi, vec3 n, float alpha)
 	return gtr1PdfWm(n, h, wo, alpha) / (4.0 * absDot(h, wo));
 }
 
-BsdfSample principledClearcoatSample(vec3 n, vec3 wo, vec3 baseColor, float alpha, float u, vec2 u2)
+BSDFSample principledClearcoatSample(vec3 n, vec3 wo, vec3 baseColor, float alpha, vec3 u)
 {
-	vec3 h = gtr1SampleWm(n, wo, alpha, u2);
+	vec3 h = gtr1SampleWm(n, wo, alpha, u.yz);
 	vec3 wi = reflect(-wo, h);
 	
 	if (dot(n, wi) < 0.0)
-		return InvalidBsdfSample;
-	vec3 bsdf = principledClearcoatBsdf(wo, wi, n, baseColor, alpha);
+		return InvalidBSDFSample;
+	vec3 bsdf = principledClearcoat(wo, wi, n, baseColor, alpha);
 	float pdf = principledClearcoatPdf(wo, wi, n, alpha);
-	return makeBsdfSample(wi, pdf, bsdf, 1.0, GlosRefl);
+	return makeBSDFSample(wi, pdf, bsdf, 1.0, GlosRefl);
 }
 
-vec3 principledDiffuseBsdf(vec3 wo, vec3 wi, vec3 n, vec3 baseColor, float subsurface, float roughness)
+vec3 principledDiffuse(vec3 wo, vec3 wi, vec3 n, vec3 baseColor, float subsurface, float roughness)
 {
 	float cosWo = satDot(n, wo);
 	float cosWi = satDot(n, wi);
@@ -407,31 +435,31 @@ vec3 principledDiffuseBsdf(vec3 wo, vec3 wi, vec3 n, vec3 baseColor, float subsu
 
 	vec3 h = normalize(wo + wi);
 	float hCosWi = dot(h, wi);
-	float HoWi2 = hCosWi * hCosWi;
+	float hCosWi2 = hCosWi * hCosWi;
 
-	float Fi = schlickW(cosWi);
-	float Fo = schlickW(cosWo);
+	float fi = schlickW(cosWi);
+	float fo = schlickW(cosWo);
 
-	vec3 Fd90 = vec3(0.5 + 2.0 * roughness * HoWi2);
-	vec3 Fd = mix(vec3(1.0), Fd90, Fi) * mix(vec3(1.0), Fd90, Fo);
-	vec3 baseDiffuse = baseColor * Fd * PiInv;
+	vec3 fd90 = vec3(0.5 + 2.0 * roughness * hCosWi2);
+	vec3 fd = mix(vec3(1.0), fd90, fi) * mix(vec3(1.0), fd90, fo);
+	vec3 baseDiffuse = baseColor * fd * PiInv;
 
-	vec3 Fss90 = vec3(roughness * HoWi2);
-	vec3 Fss = mix(vec3(1.0), Fss90, Fi) * mix(vec3(1.0), Fss90, Fo);
-	vec3 ss = baseColor * PiInv * 1.25 * (Fss * (1.0 / (cosWi + cosWo) - 0.5) + 0.5);
+	vec3 fss90 = vec3(roughness * hCosWi2);
+	vec3 fss = mix(vec3(1.0), fss90, fi) * mix(vec3(1.0), fss90, fo);
+	vec3 ss = baseColor * PiInv * 1.25 * (fss * (1.0 / (cosWi + cosWo) - 0.5) + 0.5);
 
 	return mix(baseDiffuse, ss, subsurface);
 }
 
-BsdfSample principledDiffuseSample(vec3 n, vec3 wo, vec3 baseColor, float subsurface, float roughness, float u, vec2 u2)
+BSDFSample principledDiffuseSample(vec3 n, vec3 wo, vec3 baseColor, float subsurface, float roughness, vec3 u)
 {
-	vec4 samp = sampleCosineWeighted(n, u2);
+	vec4 samp = sampleCosineWeighted(n, u.yz);
 	vec3 wi = samp.xyz;
-	vec3 bsdf = principledDiffuseBsdf(wo, wi, n, baseColor, subsurface, roughness);
-	return makeBsdfSample(wi, samp.w, bsdf, 1.0, Diffuse);
+	vec3 bsdf = principledDiffuse(wo, wi, n, baseColor, subsurface, roughness);
+	return makeBSDFSample(wi, samp.w, bsdf, 1.0, Diffuse);
 }
 
-vec3 principledBsdf(vec3 wo, vec3 wi, vec3 n, PrincipledBRDF param)
+vec3 principledBRDF(vec3 wo, vec3 wi, vec3 n, BSDFParam param, TransportMode mode)
 {
 	vec3 res = vec3(0.0);
 
@@ -450,18 +478,18 @@ vec3 principledBsdf(vec3 wo, vec3 wi, vec3 n, PrincipledBRDF param)
 	float clearcoatAlpha = mix(0.1, 0.001, clearcoatGloss);
 	float lum = luminance(baseColor);
 	vec3 tintColor = lum > 0 ? baseColor / lum : vec3(1.0);
-	vec3 Fm0 = mix(0.08 * specular * mix(vec3(1.0), tintColor, specularTint), baseColor, metallic);
+	vec3 fm0 = mix(0.08 * specular * mix(vec3(1.0), tintColor, specularTint), baseColor, metallic);
 	float hCosWi = dot(normalize(wo + wi), wi);
 
-	res += principledDiffuseBsdf(wo, wi, n, baseColor, subsurface, roughness) * (1.0 - metallic);
-	res += principledMetalBsdf(wo, wi, n, Fm0, alpha);
-	res += principledClearcoatBsdf(wo, wi, n, baseColor, clearcoatAlpha) * clearcoat * 0.25;
+	res += principledDiffuse(wo, wi, n, baseColor, subsurface, roughness) * (1.0 - metallic);
+	res += principledMetal(wo, wi, n, fm0, alpha);
+	res += principledClearcoat(wo, wi, n, baseColor, clearcoatAlpha) * clearcoat * 0.25;
 	res += mix(vec3(1.0), tintColor, sheenTint) * schlickW(hCosWi) * sheen * (dot(n, wi) < 0.0 ? 0.0 : 1.0);
 
 	return res;
 }
 
-float principledPdf(vec3 wo, vec3 wi, vec3 n, PrincipledBRDF param)
+float principledBRDFPdf(vec3 wo, vec3 wi, vec3 n, BSDFParam param, TransportMode mode)
 {
 	float pdf = 0.0;
 	vec3 baseColor = param.baseColor;
@@ -485,7 +513,7 @@ float principledPdf(vec3 wo, vec3 wi, vec3 n, PrincipledBRDF param)
 	return pdf / (1.0 + 0.25 * clearcoat);
 }
 
-BsdfSample principledSample(vec3 n, vec3 wo, PrincipledBRDF param, float u, vec2 u2)
+BSDFSample principledBRDFSample(vec3 n, vec3 wo, BSDFParam param, TransportMode mode, vec3 u)
 {
 	vec3 baseColor = param.baseColor;
 	float subsurface = param.subsurface;
@@ -510,18 +538,18 @@ BsdfSample principledSample(vec3 n, vec3 wo, PrincipledBRDF param, float u, vec2
 
 	float s = rand() * cdf[2];
 	if (s <= cdf[0])
-		wi = principledDiffuseSample(n, wo, baseColor, subsurface, roughness, u, u2).wi;
+		wi = principledDiffuseSample(n, wo, baseColor, subsurface, roughness, u).wi;
 	else if (s <= cdf[1])
 	{
 		float lum = luminance(baseColor);
 		vec3 tintColor = lum > 0 ? baseColor / lum : vec3(1.0);
-		vec3 Fm0 = mix(0.08 * specular * mix(vec3(1.0), tintColor, specularTint), baseColor, metallic);
-		wi = principledMetalSample(n, wo, Fm0, alpha, u, u2).wi;
+		vec3 fm0 = mix(0.08 * specular * mix(vec3(1.0), tintColor, specularTint), baseColor, metallic);
+		wi = principledMetalSample(n, wo, fm0, alpha, u).wi;
 	}
 	else
-		wi = principledClearcoatSample(n, wo, baseColor, alpha, u, u2).wi;
+		wi = principledClearcoatSample(n, wo, baseColor, alpha, u).wi;
 
-	vec3 bsdf = principledBsdf(wo, wi, n, param);
-	float pdf = principledPdf(wo, wi, n, param);
-	return makeBsdfSample(wi, pdf, bsdf, 1.0, Diffuse);
+	vec3 bsdf = principledBRDF(wo, wi, n, param, mode);
+	float pdf = principledBRDFPdf(wo, wi, n, param, mode);
+	return makeBSDFSample(wi, pdf, bsdf, 1.0, Diffuse);
 }

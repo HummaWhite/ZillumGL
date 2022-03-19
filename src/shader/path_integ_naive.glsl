@@ -30,47 +30,7 @@ uniform bool uSampleLight;
 uniform bool uRussianRoulette;
 uniform int uMaxBounce;
 
-uint getMaterialType(int matId)
-{
-	return texelFetch(uMatTypes, matId * 4 + 3).w;
-}
-
-MetalWorkflowBRDF loadMetalWorkflow(int matId, int texId, vec2 uv)
-{
-	MetalWorkflowBRDF ret;
-	if (texId == -1)
-		ret.baseColor = texelFetch(uMaterials, matId * 4 + 0).xyz;
-	else
-	{
-		vec2 uvScale = texelFetch(uTexUVScale, texId).xy;
-		ret.baseColor = texture2DArray(uTextures, vec3(fract(uv) * uvScale, texId)).rgb;
-	}
-	vec2 metRough = texelFetch(uMaterials, matId * 4 + 1).xy;
-	ret.metallic = mix(0.0134, 1.0, metRough.x);
-	ret.roughness = metRough.y;
-	return ret;
-}
-
-PrincipledBRDF loadPrincipledBRDF(int matId, int texId, vec2 uv)
-{
-	PrincipledBRDF ret;
-	vec4 baseColSS = texelFetch(uMaterials, matId * 4 + 0);
-	vec4 metRouSpecTint = texelFetch(uMaterials, matId * 4 + 1);
-	vec4 sheenTintCoatGloss = texelFetch(uMaterials, matId * 4 + 2);
-
-	ret.baseColor = (texId == -1) ? baseColSS.rgb :
-		texture2DArray(uTextures, vec3(fract(uv) * texelFetch(uTexUVScale, texId).xy, texId)).rgb;
-	ret.subsurface = baseColSS.w;
-	ret.metallic = metRouSpecTint.x;
-	ret.roughness = mix(0.0134, 1.0, metRouSpecTint.y);
-	ret.specular = metRouSpecTint.z;
-	ret.specularTint = metRouSpecTint.w;
-	ret.sheen = sheenTintCoatGloss.x;
-	ret.sheenTint = sheenTintCoatGloss.y;
-	ret.clearcoat = sheenTintCoatGloss.z;
-	ret.clearcoatGloss = sheenTintCoatGloss.w;
-	return ret;
-}
+@include material_loader.glsl
 
 vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 {
@@ -84,17 +44,28 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 		vec3 wo = -ray.dir;
 		vec3 norm = surf.norm;
 
-		//if (dot(norm, wo) < 0) norm = -norm;
 		int matTexId = texelFetch(uMatTexIndices, id).r;
 		int matId = matTexId & 0x0000ffff;
 		int texId = matTexId >> 16;
 
-		PrincipledBRDF matParam = loadPrincipledBRDF(matId, texId, surf.uv);
+		BSDFType matType = loadMaterialType(matId);
+		if (matType != Dielectric && matType != ThinDielectric)
+		{
+			if (dot(norm, wo) < 0)
+				norm = -norm;
+		}
 
-		/*MetalWorkflowBRDF matParam = loadMetalWorkflow(matId, texId, surf.uv);
-		vec3 baseColor = matParam.baseColor;
-		float metallic = matParam.metallic;
-		float roughness = matParam.roughness;*/
+		BSDFParam matParam;
+		matType = PrincipledBRDF;
+		switch (matType)
+		{
+		case PrincipledBRDF:
+			matParam = loadPrincipledBRDF(matId, texId, surf.uv);
+			break;
+		case MetalWorkflow:
+			matParam = loadMetalWorkflow(matId, texId, surf.uv);
+			break;
+		}
 
 		if (uSampleLight)
 		{
@@ -104,20 +75,21 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 			LightLiSample samp = sampleLightAndEnv(pos, ud, us);
 			if (samp.pdf > 0.0)
 			{
-				float bsdfPdf = principledPdf(wo, samp.wi, norm, matParam);
-				//float bsdfPdf = metalWorkflowPdf(wo, samp.wi, norm, metallic, roughness * roughness);
+				vec3 bsdf;
+				float bsdfPdf;
+
+				float bsdfPdf = principledBRDFPdf(wo, samp.wi, norm, matParam, Radiance);
+
 				float weight = biHeuristic(samp.pdf, bsdfPdf);
 				result +=
-					principledBsdf(wo, samp.wi, norm, matParam)
+					principledBRDF(wo, samp.wi, norm, matParam, Radiance)
 					//metalWorkflowBsdf(wo, samp.wi, norm, baseColor, metallic, roughness)
 					* beta * satDot(norm, samp.wi) * samp.coef * weight;
 			}
 		}
 
-		float uf = sample1D(s);
-		vec2 u = sample2D(s);
-		BsdfSample samp;
-		samp = principledSample(norm, wo, matParam, uf, u);
+		BSDFSample samp;
+		samp = principledBRDFSample(norm, wo, matParam, Radiance, sample3D(s));
 		//samp = metalWorkflowSample(norm, wo, baseColor, metallic, roughness, uf, u);
 
 		vec3 wi = samp.wi;
@@ -222,7 +194,7 @@ void main()
 	sampleOffset = uSpp * uSampleDim;
 	if (sampleOffset > uSampleNum * uSampleDim) sampleOffset -= uSampleNum * uSampleDim;
 
-	Ray ray = thinLensCameraSampleRay(scrCoord, sampleIdx);
+	Ray ray = thinLensCameraSampleRay(scrCoord, sample4D(sampleIdx));
 	vec3 result = getResult(ray, sampleIdx);
 	if (BUG) result = BUGVAL;
 
