@@ -31,13 +31,13 @@ struct ThinDielectricBSDF
 
 struct Material
 {
-	enum { Principled = 0, MetalWorkflow = 1, Dielectric = 2, ThinDielectric = 3, Diffuse = 4 };
+	enum { Lambertian = 0, Principled, MetalWorkflow, Dielectric, ThinDielectric };
 
 	glm::vec3 baseColor = glm::vec3(1.0f);
-	float subsurface = 0.0f;
-
-	float metallic = 0.0f;
 	float roughness = 1.0f;
+
+	float subsurface = 0.0f;
+	float metallic = 0.0f;
 	float specular = 1.0f;
 	float specularTint = 1.0f;
 
@@ -47,7 +47,7 @@ struct Material
 	float clearcoatGloss = 0.0f;
 
 	float ior = 1.5f;
-	int type = MetalWorkflow;
+	int type = Lambertian;
 	float padding2;
 	float padding3;
 };

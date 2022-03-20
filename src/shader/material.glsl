@@ -10,11 +10,11 @@ const BSDFFlag SpecTrans = 1 << 4;
 const BSDFFlag Invalid = 1 << 16;
 
 #define BSDFType uint
-const BSDFType PrincipledBRDF = 0;
-const BSDFType MetalWorkflow = 1;
-const BSDFType Dielectric = 2;
-const BSDFType ThinDielectric = 3;
-const BSDFType Lambertian = 4;
+const BSDFType Lambertian = 0;
+const BSDFType PrincipledBRDF = 1;
+const BSDFType MetalWorkflow = 2;
+const BSDFType Dielectric = 3;
+const BSDFType ThinDielectric = 4;
 
 #define TransportMode uint
 const TransportMode Radiance = 0;

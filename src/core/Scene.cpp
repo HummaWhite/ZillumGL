@@ -50,12 +50,14 @@ std::pair<ModelInstancePtr, std::optional<glm::vec3>> loadModelInstance(const pu
 	return { model, std::nullopt };
 }
 
-void Scene::load()
+void Scene::load(const File::path& path)
 {
-	Error::bracketLine<0>("Scene " + SceneConfigPath);
+	Error::bracketLine<0>("Scene " + path.generic_string());
+	Resource::clear();
+	clear();
 
 	pugi::xml_document doc;
-	doc.load_file(SceneConfigPath.c_str());
+	doc.load_file(path.generic_string().c_str());
 	auto scene = doc.child("scene");
 	{
 		auto integrator = scene.child("integrator");
@@ -237,6 +239,17 @@ void Scene::createGLContext()
 	boxCount = bvhBuf.bounds.size();
 
 	Error::bracketLine<0>("Scene GL context created");
+}
+
+void Scene::clear()
+{
+	objects.clear();
+	lights.clear();
+	materials.clear();
+
+	lightSumPdf = 0.0f;
+	nLightTriangles = 0;
+	objPrimCount = 0;
 }
 
 void Scene::addObject(ModelInstancePtr object)

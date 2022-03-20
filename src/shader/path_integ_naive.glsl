@@ -28,17 +28,17 @@ uniform int uSampleNum;
 
 uniform bool uSampleLight;
 uniform bool uRussianRoulette;
-uniform int uMaxBounce;
+uniform int uMaxDepth;
 
 @include material_loader.glsl
 
 vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 {
 	vec3 result = vec3(0.0);
-	vec3 beta = vec3(1.0);
+	vec3 throughput = vec3(1.0);
 	float etaScale = 1.0;
 
-	for (int bounce = 0; bounce <= uMaxBounce; bounce++)
+	for (int bounce = 0; bounce <= uMaxDepth; bounce++)
 	{
 		vec3 pos = ray.ori;
 		vec3 wo = -ray.dir;
@@ -55,17 +55,7 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 				norm = -norm;
 		}
 
-		BSDFParam matParam;
-		matType = PrincipledBRDF;
-		switch (matType)
-		{
-		case PrincipledBRDF:
-			matParam = loadPrincipledBRDF(matId, texId, surf.uv);
-			break;
-		case MetalWorkflow:
-			matParam = loadMetalWorkflow(matId, texId, surf.uv);
-			break;
-		}
+		BSDFParam matParam = loadMaterial(matType, matId, texId, surf.uv);
 
 		if (uSampleLight)
 		{
@@ -75,23 +65,13 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 			LightLiSample samp = sampleLightAndEnv(pos, ud, us);
 			if (samp.pdf > 0.0)
 			{
-				vec3 bsdf;
-				float bsdfPdf;
-
-				float bsdfPdf = principledBRDFPdf(wo, samp.wi, norm, matParam, Radiance);
-
-				float weight = biHeuristic(samp.pdf, bsdfPdf);
-				result +=
-					principledBRDF(wo, samp.wi, norm, matParam, Radiance)
-					//metalWorkflowBsdf(wo, samp.wi, norm, baseColor, metallic, roughness)
-					* beta * satDot(norm, samp.wi) * samp.coef * weight;
+				vec4 bsdfAndPdf = materialBSDFAndPdf(matType, matParam, wo, samp.wi, norm, Radiance);
+				float weight = biHeuristic(samp.pdf, bsdfAndPdf.w);
+				result += bsdfAndPdf.xyz * throughput * satDot(norm, samp.wi) * samp.coef * weight;
 			}
 		}
 
-		BSDFSample samp;
-		samp = principledBRDFSample(norm, wo, matParam, Radiance, sample3D(s));
-		//samp = metalWorkflowSample(norm, wo, baseColor, metallic, roughness, uf, u);
-
+		BSDFSample samp = materialSample(matType, matParam, norm, wo, Radiance, sample3D(s));
 		vec3 wi = samp.wi;
 		float bsdfPdf = samp.pdf;
 		vec3 bsdf = samp.bsdf;
@@ -99,9 +79,9 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 
 		bool deltaBsdf = (flag == SpecRefl || flag == SpecTrans);
 
-		if (bsdfPdf < 1e-8) break;
-		vec3 lastBeta = beta;
-		beta *= bsdf / bsdfPdf * (deltaBsdf ? 1.0 : absDot(norm, wi));
+		if (bsdfPdf < 1e-8)
+			break;
+		throughput *= bsdf / bsdfPdf * (deltaBsdf ? 1.0 : absDot(norm, wi));
 
 		Ray newRay = rayOffseted(pos, wi);
 
@@ -119,7 +99,7 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 				float envPdf = envPdfLi(wi) * pdfSelectEnv();
 				weight = (envPdf <= 0.0) ? 0.0 : biHeuristic(bsdfPdf, envPdf);
 			}
-			result += radiance * beta * weight;
+			result += radiance * throughput * weight;
 			break;
 		}
 		else if (lightId >= 0)
@@ -131,7 +111,7 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 				float lightPdf = lightPdfLi(lightId, pos, hitPoint) * pdfSelectLight(lightId);
 				weight = (lightPdf <= 0.0) ? 0.0 : biHeuristic(bsdfPdf, lightPdf);
 			}
-			result += radiance * beta * weight;
+			result += radiance * throughput * weight;
 			break;
 		}
 
@@ -140,7 +120,7 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 			float continueProb = min(maxComponent(bsdf / bsdfPdf), 0.95f);
 			if (sample1D(s) >= continueProb)
 				break;
-			beta /= continueProb;
+			throughput /= continueProb;
 		}
 
 		if (flag == SpecTrans || flag == GlosTrans)

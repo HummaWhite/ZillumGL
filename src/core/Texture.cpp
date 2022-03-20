@@ -53,6 +53,16 @@ void Texture::setFilterWrapping(TextureFilter filter, TextureWrapping wrapping)
 	setWrapping(wrapping);
 }
 
+void Texture::clear(int level, TextureFormat format, DataType type, const void* data)
+{
+	glClearTexImage(mId, level, static_cast<GLenum>(format), static_cast<GLenum>(type), data);
+}
+
+void Texture::setZero(int level)
+{
+	clear(level, mFormat, DataType::I8, nullptr);
+}
+
 Texture2D::Texture2D(int width, int height, TextureFormat format) :
 	mWidth(width), mHeight(height), Texture(format, TextureType::Dim2)
 {

@@ -97,6 +97,8 @@ public:
 	void setFilter(TextureFilter filter);
 	void setWrapping(TextureWrapping wrapping);
 	void setFilterWrapping(TextureFilter filter, TextureWrapping wrapping);
+	void clear(int level, TextureFormat format, DataType type, const void* data);
+	void setZero(int level);
 
 	TextureFormat format() const { return mFormat; }
 	TextureType type() const { return mType; }

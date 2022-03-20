@@ -12,6 +12,7 @@ NAMESPACE_BEGIN(Application)
 GLFWwindow* mainWindow = nullptr;
 
 std::shared_ptr<NaivePathIntegrator> naivePathTracer;
+std::shared_ptr<LightPathIntegrator> lightTracer;
 std::shared_ptr<BVHDisplayIntegrator> bvhDisplayer;
 IntegratorPtr integrator;
 
@@ -34,13 +35,17 @@ namespace GLContext
 	glm::ivec2 frameSize;
 }
 
+namespace GUI
+{
+	int meshIndex = 0;
+	int matIndex = 0;
+	int envIndex;
+	int integIndex = 0;
+	bool explorerIsOpen = false;
+}
+
 namespace Config
 {
-	int uiMeshIndex = 0;
-	int uiMatIndex = 0;
-	int uiEnvIndex;
-	int uiIntegIndex = 0;
-
 	bool showBVH = false;
 	bool cursorDisabled = false;
 
@@ -203,13 +208,15 @@ void init(int width, int height, const std::string& title)
 	};
 	screenVB = VertexBuffer::createTyped<glm::vec2>(ScreenCoord, 6);
 
-	scene.load();
+	scene.load("res/scene.xml");
 	scene.createGLContext();
 
 	naivePathTracer = std::make_shared<NaivePathIntegrator>();
 	naivePathTracer->init(scene, width, height);
 	bvhDisplayer = std::make_shared<BVHDisplayIntegrator>();
 	bvhDisplayer->init(scene, width, height);
+	lightTracer = std::make_shared<LightPathIntegrator>();
+	lightTracer->init(scene, width, height);
 
 	integrator = naivePathTracer;
 
@@ -232,6 +239,9 @@ void captureImage()
 
 void processKeys()
 {
+	if (GUI::explorerIsOpen)
+		return;
+
 	const int Keys[] = { GLFW_KEY_W, GLFW_KEY_S, GLFW_KEY_A, GLFW_KEY_D,
 		GLFW_KEY_Q, GLFW_KEY_E, GLFW_KEY_R, GLFW_KEY_LEFT_SHIFT, GLFW_KEY_SPACE };
 
@@ -252,14 +262,24 @@ void processKeys()
 void materialEditor(Scene& scene, int matIndex)
 {
 	auto& m = scene.materials[matIndex];
-	const char* matTypes[] = { "Principled", "MetalWorkflow", "Dielectric", "ThinDielectric" };
-	if (ImGui::Combo("Type", &m.type, matTypes, IM_ARRAYSIZE(matTypes)))
-	{
-		scene.glContext.material->write(sizeof(Material) * matIndex, sizeof(Material), &m);
-		reset();
-	}
+	const char* matTypes[] = { "Lambertian", "Principled", "MetalWorkflow", "Dielectric", "ThinDielectric" };
+	bool writeMat = false;
 
-	if (m.type == Material::Principled)
+	if (ImGui::Combo("Type", &m.type, matTypes, IM_ARRAYSIZE(matTypes)))
+		writeMat = true;
+	if (m.type == Material::Lambertian)
+	{
+		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)))
+			writeMat = true;
+	}
+	else if (m.type == Material::MetalWorkflow)
+	{
+		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
+			ImGui::SliderFloat("Metallic", &m.metallic, 0.0f, 1.0f) ||
+			ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
+			writeMat = true;
+	}
+	else if (m.type == Material::Principled)
 	{
 		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
 			ImGui::SliderFloat("Subsurface", &m.subsurface, 0.0f, 1.0f) ||
@@ -271,10 +291,26 @@ void materialEditor(Scene& scene, int matIndex)
 			ImGui::SliderFloat("Sheen tint", &m.sheenTint, 0.0f, 1.0f) ||
 			ImGui::SliderFloat("Clearcoat", &m.clearcoat, 0.0f, 1.0f) ||
 			ImGui::SliderFloat("Clearcoat gloss", &m.clearcoatGloss, 0.0f, 1.0f))
-		{
-			scene.glContext.material->write(sizeof(Material) * matIndex, sizeof(Material), &m);
-			reset();
-		}
+			writeMat = true;
+	}
+	else if (m.type == Material::Dielectric)
+	{
+		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
+			ImGui::SliderFloat("IOR", &m.subsurface, 0.01f, 3.5f) ||
+			ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
+			writeMat = true;
+	}
+	else if (m.type == Material::ThinDielectric)
+	{
+		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
+			ImGui::SliderFloat("IOR", &m.subsurface, 0.01f, 3.5f))
+			writeMat = true;
+	}
+
+	if (writeMat)
+	{
+		scene.glContext.material->write(sizeof(Material) * matIndex, sizeof(Material), &m);
+		reset();
 	}
 }
 
@@ -291,7 +327,9 @@ void renderGUI()
 	{
 		if (ImGui::BeginMenu("File"))
 		{
-			if (ImGui::MenuItem("Open", "Ctrl+O"));
+			if (ImGui::MenuItem("Open", "Ctrl+O"))
+				GUI::explorerIsOpen = true;
+
 			if (ImGui::MenuItem("Save", "Ctrl+S"));
 
 			if (ImGui::MenuItem("Save image", nullptr))
@@ -325,11 +363,11 @@ void renderGUI()
 				reset();
 			ImGui::Separator();
 
-			const char* IntegNames[] = { "Path", "BVHDisplay" };
-			IntegratorPtr integs[] = { naivePathTracer, bvhDisplayer };
-			if (ImGui::Combo("Integrator", &uiIntegIndex, IntegNames, IM_ARRAYSIZE(IntegNames)))
+			const char* IntegNames[] = { "NaivePath", "LightPath", "BVHDisplay" };
+			IntegratorPtr integs[] = { naivePathTracer, lightTracer, bvhDisplayer };
+			if (ImGui::Combo("Integrator", &GUI::integIndex, IntegNames, IM_ARRAYSIZE(IntegNames)))
 			{
-				integrator = integs[uiIntegIndex];
+				integrator = integs[GUI::integIndex];
 				reset();
 			}
 			integrator->renderSettingsGUI();
@@ -363,10 +401,10 @@ void renderGUI()
 
 		if (ImGui::BeginMenu("Material"))
 		{
-			ImGui::SliderInt("Index", &uiMatIndex, 0, scene.materials.size() - 1);
-			bvhDisplayer->setMatIndex(uiMatIndex);
+			ImGui::SliderInt("Index", &GUI::matIndex, 0, scene.materials.size() - 1);
+			bvhDisplayer->setMatIndex(GUI::matIndex);
 			bvhDisplayer->setShouldReset();
-			materialEditor(scene, uiMatIndex);
+			materialEditor(scene, GUI::matIndex);
 			ImGui::EndMenu();
 		}
 
@@ -393,16 +431,36 @@ void renderGUI()
 		ImGui::EndMainMenuBar();
 	}
 
-	if (ImGui::Begin("Example: Simple overlay", nullptr,
+	auto [width, height] = getWindowSize(mainWindow);
+	ImGui::SetNextWindowPos({ static_cast<float>(width) - 280.0f, 40.0f });
+
+	ImGui::Begin("Example: Simple overlay", nullptr,
 		ImGuiWindowFlags_NoMove |
 		ImGuiWindowFlags_NoDecoration |
 		ImGuiWindowFlags_AlwaysAutoResize |
 		ImGuiWindowFlags_NoSavedSettings |
 		ImGuiWindowFlags_NoFocusOnAppearing |
-		ImGuiWindowFlags_NoNav))
+		ImGuiWindowFlags_NoNav);
 	{
 		integrator->renderProgressGUI();
 		ImGui::Text("Render Time: %.3f ms, FPS: %.3f", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+	}
+	ImGui::End();
+
+	if (GUI::explorerIsOpen)
+	{
+		ImGui::Begin("Explorer", &GUI::explorerIsOpen);
+		{
+			static char buf[512];
+			ImGui::InputText("Path", buf, 512);
+			if (ImGui::Button("Open"))
+			{
+				scene.load(buf);
+				scene.createGLContext();
+				glfwSetWindowSize(mainWindow, scene.filmWidth, scene.filmHeight);
+				reset();
+			}
+		}
 		ImGui::End();
 	}
 

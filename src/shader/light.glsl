@@ -47,6 +47,35 @@ LightLiSample makeLightLiSample(vec3 wi, vec3 coef, float pdf)
 
 const LightLiSample InvalidLiSample = makeLightLiSample(vec3(0.0), vec3(0.0), 0.0);
 
+struct LightLeSample
+{
+	Ray ray;
+	vec3 Le;
+	float pdfPos;
+	float pdfDir;
+};
+
+LightLeSample makeLightLeSample(Ray ray, vec3 Le, float pdfPos, float pdfDir)
+{
+	LightLeSample ret;
+	ret.ray = ray;
+	ret.Le = Le;
+	ret.pdfPos = pdfPos;
+	ret.pdfDir = pdfDir;
+	return ret;
+}
+
+int lightSampleOne(vec2 u)
+{
+	int cx = int(float(uNumLightTriangles) * u.x);
+	return (u.y < texelFetch(uLightProb, cx).r) ? cx : texelFetch(uLightAlias, cx).r;
+}
+
+float lightPdfSampleOne(int id)
+{
+	return luminance(texelFetch(uLightPower, id).rgb) / uLightSum;
+}
+
 vec3 lightLe(int id, vec3 x, vec3 wo)
 {
 	int triId = id + uObjPrimCount;
@@ -78,10 +107,19 @@ LightPdf lightPdfLe(int id, Ray ray)
 	return ret;
 }
 
-LightLiSample lightSampleOne(vec3 x, vec4 u)
+LightLeSample lightSampleOneLe(int id, vec4 u)
 {
-	LightLiSample ret;
+	int triId = id + uObjPrimCount;
+	vec3 ori = triangleSampleUniform(triId, u.xy);
+	vec3 norm = triangleSurfaceInfo(triId, ori).norm;
+	vec3 dir = sampleCosineWeighted(norm, u.zw).xyz;
 
+	return makeLightLeSample(rayOffseted(makeRay(ori, dir)), lightLe(id, ori, dir),
+		1.0 / triangleArea(triId), 0.5 * PiInv);
+}
+
+LightLiSample lightSampleOneLi(vec3 x, vec4 u)
+{
 	int cx = int(float(uNumLightTriangles) * u.x);
 	float cy = u.y;
 
@@ -135,7 +173,7 @@ float envPdfLi(vec3 wi)
 	return envGetPortion(wi) * size.x * size.y * 0.5f * square(PiInv);// / sqrt(1.0 - square(wi.z));
 }
 
-vec4 envImportanceSample(vec4 u)
+vec4 envSampleWi(vec4 u)
 {
 	ivec2 size = textureSize(uEnvMap, 0).xy;
 	int w = size.x, h = size.y;
@@ -161,9 +199,9 @@ vec4 envImportanceSample(vec4 u)
 	return vec4(wi, pdf);
 }
 
-LightLiSample envImportanceSample(vec3 x, vec4 u)
+LightLiSample envSampleLi(vec3 x, vec4 u)
 {
-	vec4 sp = envImportanceSample(u);
+	vec4 sp = envSampleWi(u);
 	vec3 wi = sp.xyz;
 	float pdf = sp.w;
 
@@ -185,7 +223,7 @@ LightLiSample sampleLightAndEnv(vec3 x, float ud, vec4 us)
 	bool sampleLight = ud < pdfSampleLight;
 	float pdfSelect = sampleLight ? pdfSampleLight : 1.0 - pdfSampleLight;
 
-	LightLiSample samp = sampleLight ? lightSampleOne(x, us) : envImportanceSample(x, us);
+	LightLiSample samp = sampleLight ? lightSampleOneLi(x, us) : envSampleLi(x, us);
 	samp.coef /= pdfSelect;
 	samp.pdf *= pdfSelect;
 	return samp;

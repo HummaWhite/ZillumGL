@@ -87,6 +87,8 @@ struct LightPathIntegParam
 	bool russianRoulette = false;
 	bool finiteSample = false;
 	int maxSample = 64;
+	int threadBlocksOnePass = 20;
+	float samplePerPixel = 0.0f;
 };
 
 class LightPathIntegrator :
@@ -100,7 +102,7 @@ public:
 	void renderProgressGUI();
 
 	TexturePtr getFrame() { return mFrameTex; }
-	float resultScale() const { return 1.0f / (mCurSample + 1); }
+	float resultScale() const { return 1.0f / mParam.samplePerPixel; }
 
 private:
 	void recreateFrameTex(int width, int height);
@@ -112,6 +114,7 @@ public:
 private:
 	Texture2DPtr mFrameTex;
 	ShaderPtr mShader;
+	ShaderPtr mImageClearShader;
 };
 
 class TriPathIntegrator :

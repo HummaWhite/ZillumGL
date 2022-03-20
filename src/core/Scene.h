@@ -9,8 +9,6 @@
 #include "Camera.h"
 #include "Sampler.h"
 
-const std::string SceneConfigPath = "res/scene.xml";
-
 struct SceneGLContext
 {
 	TextureBufferedPtr vertex;
@@ -31,10 +29,11 @@ struct SceneGLContext
 class Scene
 {
 public:
-	void load();
+	void load(const File::path& path);
 	void saveToFile(const File::path& path);
 
 	void createGLContext();
+	void clear();
 
 	void addObject(ModelInstancePtr object);
 	void addMaterial(const Material& material);

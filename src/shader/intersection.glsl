@@ -113,7 +113,7 @@ HitInfo intersectTriangle(int id, Ray ray)
 	return intersectTriangle(a, b, c, ray);
 }
 
-vec3 triangleRandomPoint(int id, vec2 u)
+vec3 triangleSampleUniform(int id, vec2 u)
 {
 	int ia = texelFetch(uIndices, id * 3 + 0).r;
 	int ib = texelFetch(uIndices, id * 3 + 1).r;
@@ -375,4 +375,11 @@ int bvhHit(Ray ray, out float dist)
 		k++;
 	}
 	return closest;
+}
+
+bool visible(vec3 x, vec3 y)
+{
+	float dist = distance(x, y) - 2e-5;
+	vec3 wi = normalize(y - x);
+	return !bvhTest(makeRay(x + wi * 1e-5, wi), dist);
 }
