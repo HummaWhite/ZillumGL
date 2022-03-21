@@ -11,10 +11,10 @@
 const File::path ShaderDefaultDir = File::absolute(File::path("src/shader"));
 
 Shader::Shader(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr) :
-	mType(ShaderType::Graphics), mName(path.generic_string()), mExtensionStr(extensionStr),
+	mName(path.generic_string()), mExtensionStr(extensionStr),
 	mComputeGroupSize(computeSize), GLStateObject(GLStateObjectType::Shader)
 {
-	ShaderText text;
+	ShaderSource source;
 	std::fstream file;
 
 	std::map<File::path, bool> inclRec;
@@ -25,9 +25,16 @@ Shader::Shader(const File::path& path, const glm::ivec3& computeSize, const std:
 	Error::line("[Shader " + fullPath.generic_string() + "]");
 	Error::check(file.is_open(), "\t[Error unable to load file]");
 
-	loadShader(file, text, ShaderLoadStat::None, inclRec);
+	loadShader(file, source, ShaderLoadStat::None, inclRec);
 
-	compileShader(text);
+	compileShader(source);
+}
+
+Shader::Shader(const std::string& name, const ShaderSource& source) :
+	mName(name), GLStateObject(GLStateObjectType::Shader)
+{
+	Error::line("[Shader " + name + "]");
+	compileShader(source);
 }
 
 Shader::~Shader()
@@ -145,7 +152,12 @@ ShaderPtr Shader::create(const File::path& path, const glm::ivec3& computeSize, 
 	return std::make_shared<Shader>(path, computeSize, extensionStr);
 }
 
-void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat stat,
+ShaderPtr Shader::create(const std::string& name, const ShaderSource& source)
+{
+	return std::make_shared<Shader>(name, source);
+}
+
+void Shader::loadShader(std::fstream& file, ShaderSource& text, ShaderLoadStat stat,
 	std::map<File::path, bool>& inclRec)
 {
 	std::string line;
@@ -181,7 +193,6 @@ void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat sta
 				{
 					Error::check(stat != ShaderLoadStat::Compute, "Redefinition");
 					stat = ShaderLoadStat::Compute;
-					mType = ShaderType::Compute;
 					text.compute += "\n#version 450\n" + mExtensionStr +
 						"layout(local_size_x = " + std::to_string(mComputeGroupSize.x) +
 						", local_size_y = " + std::to_string(mComputeGroupSize.y) +
@@ -227,7 +238,7 @@ void Shader::loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat sta
 	}
 }
 
-void Shader::compileShader(const ShaderText& text)
+void Shader::compileShader(const ShaderSource& text)
 {
 	int shaderType[] = { GL_VERTEX_SHADER, GL_FRAGMENT_SHADER, GL_GEOMETRY_SHADER, GL_COMPUTE_SHADER };
 	std::string shaderName[] = { "Vertex", "Fragment", "Geometry", "Compute" };

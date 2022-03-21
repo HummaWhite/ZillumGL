@@ -112,10 +112,10 @@ LightLeSample lightSampleOneLe(int id, vec4 u)
 	int triId = id + uObjPrimCount;
 	vec3 ori = triangleSampleUniform(triId, u.xy);
 	vec3 norm = triangleSurfaceInfo(triId, ori).norm;
-	vec3 dir = sampleCosineWeighted(norm, u.zw).xyz;
+	vec4 samp = sampleCosineWeighted(norm, u.zw);
 
-	return makeLightLeSample(rayOffseted(makeRay(ori, dir)), lightLe(id, ori, dir),
-		1.0 / triangleArea(triId), 0.5 * PiInv);
+	return makeLightLeSample(rayOffseted(makeRay(ori, samp.xyz)), lightLe(id, ori, samp.xyz),
+		1.0 / triangleArea(triId), samp.w);
 }
 
 LightLiSample lightSampleOneLi(vec3 x, vec4 u)

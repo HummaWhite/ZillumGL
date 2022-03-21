@@ -1,7 +1,7 @@
 @type compute
 
-layout(rgba32f, binding = 0) uniform image2D uFrame;
-//layout(r32f, binding = 0) uniform image2D uFrame;
+//layout(rgba32f, binding = 0) uniform image2D uFrame;
+layout(r32f, binding = 0) uniform image2D uFrame;
 bool BUG = false;
 vec3 BUGVAL = vec3(0.0);
 
@@ -37,12 +37,11 @@ void accumulateFilm(vec2 uv, vec3 res)
 		return;
 	ivec2 iuv = ivec2(uv * vec2(uFilmSize));
 
-	/*imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 0, iuv.y), res.r);
+	imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 0, iuv.y), res.r);
 	imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 1, iuv.y), res.g);
-	imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 2, iuv.y), res.b);*/
-
-	vec3 last = imageLoad(uFrame, iuv).rgb;
-	imageStore(uFrame, iuv, vec4(last + res, 1.0));
+	imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 2, iuv.y), res.b);
+	/*vec3 last = imageLoad(uFrame, iuv).rgb;
+	imageStore(uFrame, iuv, vec4(last + res, 1.0));*/
 }
 
 void lightIntegTrace(inout Sampler s)

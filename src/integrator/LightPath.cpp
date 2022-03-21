@@ -1,38 +1,81 @@
 #include "../core/Integrator.h"
 
 const int WorkgroupSize = 1536;
-const int ClearSizeX = 48;
-const int ClearSizeY = 32;
+const int ImageOpSizeX = 48;
+const int ImageOpSizeY = 32;
+
+const ShaderSource FilmClearShader =
+{
+	"", "", "",
+	"#version 450\n"
+	"layout(local_size_x = 48, local_size_y = 32, local_size_z = 1) in;\n"
+	"layout(r32f, binding = 0) uniform image2D uImage;\n"
+	"uniform ivec2 uTexSize;\n"
+	"\n"
+	"void main()\n"
+	"{\n"
+	"    ivec2 iuv = ivec2(gl_GlobalInvocationID.xy);\n"
+	"    if (iuv.x >= uTexSize.x || iuv.y >= uTexSize.y)\n"
+	"        return;\n"
+	"    imageStore(uImage, ivec2(iuv.x * 3 + 0, iuv.y), vec4(0.0, 0.0, 0.0, 1.0));\n"
+	"    imageStore(uImage, ivec2(iuv.x * 3 + 1, iuv.y), vec4(0.0, 0.0, 0.0, 1.0));\n"
+	"    imageStore(uImage, ivec2(iuv.x * 3 + 2, iuv.y), vec4(0.0, 0.0, 0.0, 1.0));\n"
+	"}\n"
+};
+
+const ShaderSource ImageCopyShader =
+{
+	"", "", "",
+	"#version 450\n"
+	"layout(local_size_x = 48, local_size_y = 32, local_size_z = 1) in;\n"
+	"layout(r32f, binding = 0) uniform readonly image2D uInImage;\n"
+	"layout(rgba32f, binding = 1) uniform writeonly image2D uOutImage;\n"
+	"uniform ivec2 uTexSize;\n"
+	"\n"
+	"void main()"
+	"{\n"
+	"    ivec2 iuv = ivec2(gl_GlobalInvocationID.xy);\n"
+	"    if (iuv.x >= uTexSize.x || iuv.y >= uTexSize.y)\n"
+	"        return;\n"
+	"    float r = imageLoad(uInImage, ivec2(iuv.x * 3 + 0, iuv.y)).r;\n"
+	"    float g = imageLoad(uInImage, ivec2(iuv.x * 3 + 1, iuv.y)).r;\n"
+	"    float b = imageLoad(uInImage, ivec2(iuv.x * 3 + 2, iuv.y)).r;\n"
+	"    imageStore(uOutImage, iuv, vec4(r, g, b, 1.0));\n"
+	"}\n"
+};
 
 void LightPathIntegrator::recreateFrameTex(int width, int height)
 {
+	mFilmTex = Texture2D::createEmpty(width * 3, height, TextureFormat::Col1x32f);
+	mFilmTex->setFilter(TextureFilter::Nearest);
 	mFrameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
 	mFrameTex->setFilter(TextureFilter::Nearest);
-	Pipeline::bindTextureToImage(mFrameTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
+	Pipeline::bindTextureToImage(mFilmTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col1x32f);
+	Pipeline::bindTextureToImage(mFrameTex, 1, 0, ImageAccess::WriteOnly, TextureFormat::Col4x32f);
 }
 
 void LightPathIntegrator::updateUniforms(const Scene& scene, int width, int height)
 {
 	auto& sceneBuffers = scene.glContext;
-	mShader->setTexture("uVertices", sceneBuffers.vertex, 1);
-	mShader->setTexture("uNormals", sceneBuffers.normal, 2);
-	mShader->setTexture("uTexCoords", sceneBuffers.texCoord, 3);
-	mShader->setTexture("uIndices", sceneBuffers.index, 4);
-	mShader->setTexture("uBounds", sceneBuffers.bound, 5);
-	mShader->setTexture("uHitTable", sceneBuffers.hitTable, 6);
-	mShader->setTexture("uMatTexIndices", sceneBuffers.matTexIndex, 7);
-	mShader->setTexture("uEnvMap", scene.envMap->envMap(), 8);
-	mShader->setTexture("uEnvAliasTable", scene.envMap->aliasTable(), 9);
-	mShader->setTexture("uEnvAliasProb", scene.envMap->aliasProb(), 10);
-	mShader->setTexture("uMaterials", sceneBuffers.material, 11);
-	mShader->setTexture("uMatTypes", sceneBuffers.material, 11);
-	mShader->setTexture("uLightPower", sceneBuffers.lightPower, 12);
-	mShader->setTexture("uLightAlias", sceneBuffers.lightAlias, 13);
-	mShader->setTexture("uLightProb", sceneBuffers.lightProb, 14);
-	mShader->setTexture("uTextures", sceneBuffers.textures, 15);
-	mShader->setTexture("uTexUVScale", sceneBuffers.texUVScale, 16);
-	mShader->setTexture("uSobolSeq", scene.sobolTex, 17);
-	mShader->setTexture("uNoiseTex", scene.noiseTex, 18);
+	mShader->setTexture("uVertices", sceneBuffers.vertex, 2);
+	mShader->setTexture("uNormals", sceneBuffers.normal, 3);
+	mShader->setTexture("uTexCoords", sceneBuffers.texCoord, 4);
+	mShader->setTexture("uIndices", sceneBuffers.index, 5);
+	mShader->setTexture("uBounds", sceneBuffers.bound, 6);
+	mShader->setTexture("uHitTable", sceneBuffers.hitTable, 7);
+	mShader->setTexture("uMatTexIndices", sceneBuffers.matTexIndex, 8);
+	mShader->setTexture("uEnvMap", scene.envMap->envMap(), 9);
+	mShader->setTexture("uEnvAliasTable", scene.envMap->aliasTable(), 10);
+	mShader->setTexture("uEnvAliasProb", scene.envMap->aliasProb(), 11);
+	mShader->setTexture("uMaterials", sceneBuffers.material, 12);
+	mShader->setTexture("uMatTypes", sceneBuffers.material, 12);
+	mShader->setTexture("uLightPower", sceneBuffers.lightPower, 13);
+	mShader->setTexture("uLightAlias", sceneBuffers.lightAlias, 14);
+	mShader->setTexture("uLightProb", sceneBuffers.lightProb, 15);
+	mShader->setTexture("uTextures", sceneBuffers.textures, 16);
+	mShader->setTexture("uTexUVScale", sceneBuffers.texUVScale, 17);
+	mShader->setTexture("uSobolSeq", scene.sobolTex, 18);
+	mShader->setTexture("uNoiseTex", scene.noiseTex, 19);
 	mShader->set1i("uNumLightTriangles", scene.nLightTriangles);
 	mShader->set1f("uLightSum", scene.lightSumPdf);
 	mShader->set1f("uEnvSum", scene.envMap->sumPdf());
@@ -59,6 +102,9 @@ void LightPathIntegrator::updateUniforms(const Scene& scene, int width, int heig
 
 	mShader->set1i("uRussianRoulette", mParam.russianRoulette);
 	mShader->set1i("uMaxDepth", mParam.maxDepth);
+
+	mImageCopyShader->set2i("uTexSize", width, height);
+	mImageClearShader->set2i("uTexSize", width, height);
 }
 
 void LightPathIntegrator::init(const Scene& scene, int width, int height)
@@ -66,7 +112,8 @@ void LightPathIntegrator::init(const Scene& scene, int width, int height)
 	mShader = Shader::create("light_path_integ.glsl", { WorkgroupSize, 1, 1 },
 		"#extension GL_EXT_texture_array : enable\n" \
 		"#extension GL_NV_shader_atomic_float : enable\n");
-	mImageClearShader = Shader::create("image_clear.glsl", { ClearSizeX, ClearSizeY, 1 });
+	mImageCopyShader = Shader::create("LightPathIntegrator:: image_copy.glsl", ImageCopyShader);
+	mImageClearShader = Shader::create("LightPathIntegrator:: film_clear.glsl", FilmClearShader);
 	recreateFrameTex(width, height);
 	updateUniforms(scene, width, height);
 }
@@ -74,9 +121,12 @@ void LightPathIntegrator::init(const Scene& scene, int width, int height)
 void LightPathIntegrator::renderOnePass()
 {
 	mFreeCounter++;
+	int width = mResetStatus.renderSize.x;
+	int height = mResetStatus.renderSize.y;
+
 	if (mShouldReset)
 	{
-		reset(*mResetStatus.scene, mResetStatus.renderSize.x, mResetStatus.renderSize.y);
+		reset(*mResetStatus.scene, width, height);
 		mShouldReset = false;
 	}
 	if (mParam.finiteSample && static_cast<float>(mParam.samplePerPixel) > mParam.maxSample)
@@ -91,8 +141,13 @@ void LightPathIntegrator::renderOnePass()
 	Pipeline::dispatchCompute(mParam.threadBlocksOnePass, 1, 1, mShader);
 	Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
 
+	int numX = (width + ImageOpSizeX - 1) / ImageOpSizeX;
+	int numY = (height + ImageOpSizeY - 1) / ImageOpSizeY;
+	Pipeline::dispatchCompute(numX, numY, 1, mImageCopyShader);
+	Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
+
 	mParam.samplePerPixel += static_cast<float>(mParam.threadBlocksOnePass) * WorkgroupSize /
-		(mResetStatus.renderSize.x * mResetStatus.renderSize.y);
+		(width * height);
 	mCurSample++;
 }
 
@@ -102,10 +157,8 @@ void LightPathIntegrator::reset(const Scene& scene, int width, int height)
 		recreateFrameTex(width, height);
 	else
 	{
-		//mFrameTex->clear(0, mFrameTex->format(), DataType::F32, nullptr);
-		mImageClearShader->set2i("uTexSize", width, height);
-		int numX = (width + ClearSizeX - 1) / ClearSizeX;
-		int numY = (height + ClearSizeY - 1) / ClearSizeY;
+		int numX = (width + ImageOpSizeX - 1) / ImageOpSizeX;
+		int numY = (height + ImageOpSizeY - 1) / ImageOpSizeY;
 		Pipeline::dispatchCompute(numX, numY, 1, mImageClearShader);
 		Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
 	}

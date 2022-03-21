@@ -53,7 +53,7 @@ namespace Config
 	bool verticalSync = false;
 
 	bool preview = true;
-	int previewScale = 8;
+	int previewScale = 4;
 
 	int toneMapping = 2;
 }

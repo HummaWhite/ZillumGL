@@ -87,7 +87,7 @@ struct LightPathIntegParam
 	bool russianRoulette = false;
 	bool finiteSample = false;
 	int maxSample = 64;
-	int threadBlocksOnePass = 20;
+	int threadBlocksOnePass = 2;
 	float samplePerPixel = 0.0f;
 };
 
@@ -113,7 +113,9 @@ public:
 
 private:
 	Texture2DPtr mFrameTex;
+	Texture2DPtr mFilmTex;
 	ShaderPtr mShader;
+	ShaderPtr mImageCopyShader;
 	ShaderPtr mImageClearShader;
 };
 

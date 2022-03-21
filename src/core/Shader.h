@@ -18,9 +18,12 @@
 class Shader;
 using ShaderPtr = std::shared_ptr<Shader>;
 
-enum class ShaderType
+struct ShaderSource
 {
-	Graphics, Compute
+	std::string vertex;
+	std::string fragment;
+	std::string geometry;
+	std::string compute;
 };
 
 class ShaderUniform
@@ -82,6 +85,7 @@ class Shader :
 {
 public:
 	Shader(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr);
+	Shader(const std::string& name, const ShaderSource& source);
 	~Shader();
 
 	void enable();
@@ -106,10 +110,10 @@ public:
 	static int getUniformLocation(GLuint programID, const std::string& name);
 
 	std::string name() const { return mName; }
-	ShaderType type() const { return mType; }
 
 	static ShaderPtr create(const File::path& path, const glm::ivec3& computeSize = glm::ivec3(1),
 		const std::string& extensionStr = "");
+	static ShaderPtr create(const std::string& name, const ShaderSource& source);
 
 private:
 	enum class ShaderLoadStat
@@ -117,17 +121,9 @@ private:
 		None, Vertex, Fragment, Geometry, Compute
 	};
 
-	struct ShaderText
-	{
-		std::string vertex;
-		std::string fragment;
-		std::string geometry;
-		std::string compute;
-	};
-
 private:
-	void loadShader(std::fstream& file, ShaderText& text, ShaderLoadStat stat, std::map<File::path, bool>& inclRec);
-	void compileShader(const ShaderText& text);
+	void loadShader(std::fstream& file, ShaderSource& text, ShaderLoadStat stat, std::map<File::path, bool>& inclRec);
+	void compileShader(const ShaderSource& text);
 	void checkShaderCompileInfo(uint32_t shaderId, const std::string& name);
 	void checkShaderLinkInfo();
 
@@ -151,7 +147,6 @@ private:
 
 private:
 	std::string mName;
-	ShaderType mType;
 
 	std::string mExtensionStr;
 	glm::ivec3 mComputeGroupSize;
