@@ -42,7 +42,6 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 	{
 		vec3 pos = ray.ori;
 		vec3 wo = -ray.dir;
-		vec3 norm = surf.norm;
 
 		int matTexId = texelFetch(uMatTexIndices, id).r;
 		int matId = matTexId & 0x0000ffff;
@@ -51,8 +50,8 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 		BSDFType matType = loadMaterialType(matId);
 		if (matType != Dielectric && matType != ThinDielectric)
 		{
-			if (dot(norm, wo) < 0)
-				norm = -norm;
+			if (dot(surf.ns, wo) < 0)
+				flipNormals(surf);
 		}
 
 		BSDFParam matParam = loadMaterial(matType, matId, texId, surf.uv);
@@ -65,13 +64,13 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 			LightLiSample samp = sampleLightAndEnv(pos, ud, us);
 			if (samp.pdf > 0.0)
 			{
-				vec4 bsdfAndPdf = materialBSDFAndPdf(matType, matParam, wo, samp.wi, norm, Radiance);
+				vec4 bsdfAndPdf = materialBSDFAndPdf(matType, matParam, wo, samp.wi, surf.ns, Radiance);
 				float weight = biHeuristic(samp.pdf, bsdfAndPdf.w);
-				result += bsdfAndPdf.xyz * throughput * satDot(norm, samp.wi) * samp.coef * weight;
+				result += bsdfAndPdf.xyz * throughput * satDot(surf.ns, samp.wi) * samp.coef * weight;
 			}
 		}
 
-		BSDFSample samp = materialSample(matType, matParam, norm, wo, Radiance, sample3D(s));
+		BSDFSample samp = materialSample(matType, matParam, surf.ns, wo, Radiance, sample3D(s));
 		vec3 wi = samp.wi;
 		float bsdfPdf = samp.pdf;
 		vec3 bsdf = samp.bsdf;
@@ -81,7 +80,7 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 
 		if (bsdfPdf < 1e-8)
 			break;
-		throughput *= bsdf / bsdfPdf * (deltaBsdf ? 1.0 : absDot(norm, wi));
+		throughput *= bsdf / bsdfPdf * (deltaBsdf ? 1.0 : absDot(surf.ns, wi));
 
 		Ray newRay = rayOffseted(pos, wi);
 

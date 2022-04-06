@@ -19,12 +19,12 @@ vec3 aoIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 {
 	vec3 ao = vec3(0.0);
 	vec3 pos = ray.ori;
-	vec3 norm = surf.norm;
-	if (dot(norm, ray.dir) > 0) norm = -norm;
+	if (dot(surf.ns, ray.dir) > 0)
+		flipNormals(surf);
 
 	for (int i = 0; i < uMaxBounce; i++)
 	{
-		vec3 wi = sampleCosineWeighted(norm, sample2D(s)).xyz;
+		vec3 wi = sampleCosineWeighted(surf.ns, sample2D(s)).xyz;
 		Ray occRay = rayOffseted(pos, wi);
 		if (bvhTest(occRay, uAoCoef.x)) ao += 1.0;
 	}

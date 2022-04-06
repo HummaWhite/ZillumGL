@@ -36,7 +36,7 @@
 
 NAMESPACE_BEGIN(Application)
 
-void init(int width, int height, const std::string& title);
+void init(int width, int height, const std::string& title, const File::path& scenePath);
 int run();
 
 NAMESPACE_END(Application)

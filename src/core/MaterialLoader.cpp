@@ -61,5 +61,10 @@ std::optional<Material> loadMaterial(const pugi::xml_node& node)
 		loadFloat("ior", material.ior);
 		material.type = Material::ThinDielectric;
 	}
+	else if (type == "lambertian")
+	{
+		loadVec3f("baseColor", material.baseColor);
+		material.type = Material::Lambertian;
+	}
 	return material;
 }

@@ -80,7 +80,8 @@ vec3 lightLe(int id, vec3 x, vec3 wo)
 {
 	int triId = id + uObjPrimCount;
 	SurfaceInfo sInfo = triangleSurfaceInfo(triId, x);
-	if (dot(wo, sInfo.norm) <= 0.0) return vec3(0.0);
+	if (dot(wo, sInfo.ng) <= 0.0)
+		return vec3(0.0);
 
 	return texelFetch(uLightPower, id).rgb / triangleArea(triId) * 0.5f * PiInv;
 }
@@ -88,10 +89,11 @@ vec3 lightLe(int id, vec3 x, vec3 wo)
 float lightPdfLi(int id, vec3 x, vec3 y)
 {
 	int triId = id + uObjPrimCount;
-	vec3 norm = triangleSurfaceInfo(triId, y).norm;
+	vec3 norm = triangleSurfaceInfo(triId, y).ng;
 	vec3 yx = normalize(x - y);
 	float cosTheta = absDot(norm, yx);
-	if (cosTheta < 1e-8) return -1.0;
+	if (cosTheta < 1e-8)
+		return -1.0;
 
 	return distSquare(x, y) / (triangleArea(triId) * cosTheta);
 }
@@ -100,7 +102,7 @@ LightPdf lightPdfLe(int id, Ray ray)
 {
 	LightPdf ret;
 	int triId = id + uObjPrimCount;
-	vec3 norm = triangleSurfaceInfo(triId, ray.ori).norm;
+	vec3 norm = triangleSurfaceInfo(triId, ray.ori).ng;
 
 	ret.pdfPos = 1.0 / triangleArea(triId);
 	ret.pdfDir = (dot(norm, ray.dir) <= 0) ? 0 : 0.5 * PiInv;
@@ -111,7 +113,7 @@ LightLeSample lightSampleOneLe(int id, vec4 u)
 {
 	int triId = id + uObjPrimCount;
 	vec3 ori = triangleSampleUniform(triId, u.xy);
-	vec3 norm = triangleSurfaceInfo(triId, ori).norm;
+	vec3 norm = triangleSurfaceInfo(triId, ori).ng;
 	vec4 samp = sampleCosineWeighted(norm, u.zw);
 
 	return makeLightLeSample(rayOffseted(makeRay(ori, samp.xyz)), lightLe(id, ori, samp.xyz),
@@ -136,9 +138,10 @@ LightLiSample lightSampleOneLi(vec3 x, vec4 u)
 
 	vec3 y = sampleTriangleUniform(a, b, c, u.zw);
 	vec3 wi = normalize(y - x);
-	vec3 norm = triangleSurfaceInfo(triId, y).norm;
+	vec3 norm = triangleSurfaceInfo(triId, y).ng;
 	float cosTheta = dot(norm, -wi);
-	if (cosTheta < 1e-6) return InvalidLiSample;
+	if (cosTheta < 1e-6)
+		return InvalidLiSample;
 
 	Ray lightRay = rayOffseted(x, wi);
 
@@ -146,7 +149,8 @@ LightLiSample lightSampleOneLi(vec3 x, vec4 u)
 	float pdf = dist * dist / (triangleArea(a, b, c) * cosTheta);
 
 	float testDist = dist - 1e-4 - 1e-6;
-	if (bvhTest(lightRay, testDist) || pdf < 1e-8) return InvalidLiSample;
+	if (bvhTest(lightRay, testDist) || pdf < 1e-8)
+		return InvalidLiSample;
 
 	vec3 weight = lightLe(id, y, -wi);
 

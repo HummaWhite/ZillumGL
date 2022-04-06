@@ -43,9 +43,16 @@ Ray rayOffseted(Ray ray)
 
 struct SurfaceInfo
 {
-	vec3 norm;
+	vec3 ns;
+	vec3 ng;
 	vec2 uv;
 };
+
+void flipNormals(inout SurfaceInfo s)
+{
+	s.ns = -s.ns;
+	s.ng = -s.ng;
+}
 
 struct HitInfo
 {
@@ -168,9 +175,12 @@ SurfaceInfo triangleSurfaceInfo(int id, vec3 p)
 	float lb = length(cross(pc, pa)) * areaInv;
 	float lc = 1.0 - la - lb;
 
-	ret.norm = normalize(na * la + nb * lb + nc * lc);
+	ret.ns = normalize(na * la + nb * lb + nc * lc);
+	ret.ng = normalize(cross(pa, pb));
 	ret.uv = ta * la + tb * lb + tc * lc;
 
+	if (dot(ret.ns, ret.ng) < 0)
+		ret.ng = -ret.ng;
 	return ret;
 }
 

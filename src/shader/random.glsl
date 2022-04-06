@@ -45,6 +45,11 @@ vec2 randBox()
 	return vec2(rand(), rand());
 }
 
+void setRngSeed(uint seed)
+{
+	randSeed = seed;
+}
+
 uniform usamplerBuffer uSobolSeq;
 uniform int uSampler;
 
@@ -77,4 +82,9 @@ vec3 sample3D(inout Sampler s)
 vec4 sample4D(inout Sampler s)
 {
 	return vec4(sample1D(s), sample1D(s), sample1D(s), sample1D(s));
+}
+
+void setSamplerSeed(uint seed)
+{
+	sampleSeed = seed;
 }

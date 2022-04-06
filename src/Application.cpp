@@ -147,7 +147,6 @@ void scrollCallback(GLFWwindow* window, double offsetX, double offsetY)
 
 void resizeCallback(GLFWwindow* window, int width, int height)
 {
-	Error::bracketLine<0>("Resize to " + std::to_string(width) + "x" + std::to_string(height));
 	using namespace GLContext;
 	pipeline->setViewport(0, 0, width, height);
 	scene.camera.setAspect(static_cast<float>(width) / height);
@@ -155,7 +154,7 @@ void resizeCallback(GLFWwindow* window, int width, int height)
 	reset();
 }
 
-void init(int width, int height, const std::string& title)
+void init(int width, int height, const std::string& title, const File::path& scenePath)
 {
 	if (glfwInit() != GLFW_TRUE)
 		Error::exit("failed to init GLFW");
@@ -208,7 +207,7 @@ void init(int width, int height, const std::string& title)
 	};
 	screenVB = VertexBuffer::createTyped<glm::vec2>(ScreenCoord, 6);
 
-	scene.load("res/scene.xml");
+	scene.load(scenePath);
 	scene.createGLContext();
 
 	naivePathTracer = std::make_shared<NaivePathIntegrator>();
@@ -413,13 +412,15 @@ void renderGUI()
 			ImGui::Text("BVH nodes:    %d", scene.boxCount);
 			ImGui::Text("Triangles:    %d", scene.triangleCount);
 			ImGui::Text("Vertices:     %d", scene.vertexCount);
+			ImGui::Text("");
+			ImGui::Text("Window size:  %dx%d", frameSize.x, frameSize.y);
 			ImGui::EndMenu();
 		}
 
 		if (ImGui::BeginMenu("Help"))
 		{
 			ImGui::BulletText("F1            Switch view/edit mode");
-			ImGui::BulletText("Q/E			Rotate camera");
+			ImGui::BulletText("Q/E          Rotate camera");
 			ImGui::BulletText("R             Reset camera rotation");
 			ImGui::BulletText("Scroll        Zoom in/out");
 			ImGui::BulletText("W/A/S/D       Move camera horizonally");
@@ -455,10 +456,20 @@ void renderGUI()
 			ImGui::InputText("Path", buf, 512);
 			if (ImGui::Button("Open"))
 			{
-				scene.load(buf);
-				scene.createGLContext();
-				glfwSetWindowSize(mainWindow, scene.filmWidth, scene.filmHeight);
-				reset();
+				Error::bracketLine<0>("Scene file loading " + std::string(buf));
+				std::ifstream file(buf);
+				if (file.is_open())
+				{
+					file.close();
+					scene.load(buf);
+					scene.createGLContext();
+					GUI::matIndex = 0;
+					glfwSetWindowSize(mainWindow, scene.filmWidth, scene.filmHeight);
+					reset();
+					GUI::explorerIsOpen = false;
+				}
+				else
+					ImGui::Text("Unable to load file");
 			}
 		}
 		ImGui::End();

@@ -79,7 +79,7 @@ Ray thinLensCameraSampleRay(vec2 uv, vec4 u)
 vec2 thinLensCameraRasterPos(Ray ray)
 {
 	float cosTheta = dot(ray.dir, uCamF);
-	float dFocus = (thinLensCameraDelta() ? 1.0 : uFocalDist) / cosTheta;
+	float dFocus = uFocalDist / cosTheta;
 	vec3 pFocus = uCamMatInv * (rayPoint(ray, dFocus) - uCamPos);
 
 	vec2 filmSize = vec2(uFilmSize);
@@ -103,7 +103,7 @@ vec3 thinLensCameraIe(Ray ray)
 	float tanFOVInv = 1.0 / uTanFOV;
 	float cos2Theta = cosTheta * cosTheta;
 	float lensArea = thinLensCameraDelta() ? 1.0 : Pi * uLensRadius * uLensRadius;
-	return vec3(0.25) * square(tanFOVInv / cos2Theta) / lensArea;
+	return vec3(0.25) * square(tanFOVInv / cos2Theta) / (lensArea * uCamAsp);
 }
 
 CameraIiSample thinLensCameraSampleIi(vec3 ref, vec2 u)

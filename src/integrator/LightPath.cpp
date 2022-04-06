@@ -102,6 +102,7 @@ void LightPathIntegrator::updateUniforms(const Scene& scene, int width, int heig
 
 	mShader->set1i("uRussianRoulette", mParam.russianRoulette);
 	mShader->set1i("uMaxDepth", mParam.maxDepth);
+	mShader->set1i("uBlocksOnePass", mParam.threadBlocksOnePass);
 
 	mImageCopyShader->set2i("uTexSize", width, height);
 	mImageClearShader->set2i("uTexSize", width, height);
@@ -171,14 +172,14 @@ void LightPathIntegrator::reset(const Scene& scene, int width, int height)
 void LightPathIntegrator::renderSettingsGUI()
 {
 	ImGui::SetNextItemWidth(80.0f);
-	if (ImGui::SliderInt("Max depth", &mParam.maxDepth, 0, 32))
+	if (ImGui::InputInt("Max depth", &mParam.maxDepth, 1, 1))
 		setShouldReset();
 
 	ImGui::SameLine();
 	if (ImGui::Checkbox("Russian rolette", &mParam.russianRoulette))
 		setShouldReset();
 
-	if (ImGui::InputInt("Thread blocks one pass", &mParam.threadBlocksOnePass, 1, 10))
+	if (ImGui::InputInt("Thread blocks per pass", &mParam.threadBlocksOnePass, 1, 10))
 		setShouldReset();
 
 	int curSample = static_cast<int>(mParam.samplePerPixel);

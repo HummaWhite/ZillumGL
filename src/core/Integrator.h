@@ -87,7 +87,7 @@ struct LightPathIntegParam
 	bool russianRoulette = false;
 	bool finiteSample = false;
 	int maxSample = 64;
-	int threadBlocksOnePass = 2;
+	int threadBlocksOnePass = 32;
 	float samplePerPixel = 0.0f;
 };
 
@@ -119,12 +119,46 @@ private:
 	ShaderPtr mImageClearShader;
 };
 
-class TriPathIntegrator :
+struct TriplePathIntegParam
+{
+	int maxDepth = 4;
+	bool russianRoulette = false;
+	int LPTBlocksOnePass = 32;
+	int LPTPassPerPTPass = 8;
+	bool finiteSample = false;
+	int maxSample = 64;
+	float sppPT = 0.0f;
+	float sppLPT = 0.0f;
+};
+
+class TriplePathIntegrator :
 	public Integrator
 {
+public:
+	void init(const Scene& scene, int width, int height);
+	void renderOnePass();
+	void reset(const Scene& scene, int width, int height);
+	void renderSettingsGUI();
+	void renderProgressGUI();
+
+	TexturePtr getFrame() { return mFrameTex; }
+	float resultScale() const { return 1.0f / (mParam.sppPT + mParam.sppLPT); }
+
+private:
+	void recreateFrameTex(int width, int height);
+	void updateUniforms(const Scene& scene, int width, int height);
+	void PTPass();
+	void LPTPass();
+
+public:
+	TriplePathIntegParam mParam;
+
 private:
 	Texture2DPtr mFrameTex;
+	Texture2DPtr mFilmTex;
 	ShaderPtr mShader;
+	ShaderPtr mImageCopyShader;
+	ShaderPtr mImageClearShader;
 };
 
 class AOIntegrator :

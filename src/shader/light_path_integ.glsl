@@ -28,6 +28,7 @@ uniform int uSampleNum;
 
 uniform bool uRussianRoulette;
 uniform int uMaxDepth;
+uniform int uBlocksOnePass;
 
 @include material_loader.glsl
 
@@ -40,8 +41,6 @@ void accumulateFilm(vec2 uv, vec3 res)
 	imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 0, iuv.y), res.r);
 	imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 1, iuv.y), res.g);
 	imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 2, iuv.y), res.b);
-	/*vec3 last = imageLoad(uFrame, iuv).rgb;
-	imageStore(uFrame, iuv, vec4(last + res, 1.0));*/
 }
 
 void lightIntegTrace(inout Sampler s)
@@ -73,7 +72,7 @@ void lightIntegTrace(inout Sampler s)
 		}
 
 		LightLeSample leSamp = lightSampleOneLe(light, sample4D(s));
-		vec3 nl = triangleSurfaceInfo(triId, leSamp.ray.ori).norm;
+		vec3 nl = triangleSurfaceInfo(triId, leSamp.ray.ori).ng;
 
 		wo = -leSamp.ray.dir;
 		ray = rayOffseted(leSamp.ray);
@@ -91,7 +90,6 @@ void lightIntegTrace(inout Sampler s)
 
 		vec3 pos = rayPoint(ray, dist);
 		SurfaceInfo surf = triangleSurfaceInfo(id, pos);
-		vec3 norm = surf.norm;
 
 		int matTexId = texelFetch(uMatTexIndices, id).r;
 		int matId = matTexId & 0x0000ffff;
@@ -100,8 +98,8 @@ void lightIntegTrace(inout Sampler s)
 		BSDFType matType = loadMaterialType(matId);
 		if (matType != Dielectric && matType != ThinDielectric)
 		{
-			if (dot(norm, wo) < 0)
-				norm = -norm;
+			if (dot(surf.ns, wo) < 0)
+				flipNormals(surf);
 		}
 
 		BSDFParam matParam = loadMaterial(matType, matId, texId, surf.uv);
@@ -113,8 +111,9 @@ void lightIntegTrace(inout Sampler s)
 				vec3 pCam = pos + ciSamp.wi * ciSamp.dist;
 				if (visible(pos, pCam))
 				{
-					vec3 bsdf = materialBSDF(matType, matParam, wo, ciSamp.wi, norm, Importance);
-					vec3 res = ciSamp.Ii * bsdf * throughput * absDot(norm, ciSamp.wi) / ciSamp.pdf;
+					vec3 bsdf = materialBSDF(matType, matParam, wo, ciSamp.wi, surf.ns, Importance);
+					float cosWi = satDot(surf.ng, ciSamp.wi) * abs(dot(surf.ns, wo) / dot(surf.ng, wo));
+					vec3 res = ciSamp.Ii * bsdf * throughput * cosWi / ciSamp.pdf;
 					if (BUG)
 						res = BUGVAL;
 					if (!hasNan(res) && !isnan(ciSamp.pdf) && ciSamp.pdf > 1e-8 && !isBlack(res))
@@ -123,13 +122,15 @@ void lightIntegTrace(inout Sampler s)
 			}
 		}
 
-		BSDFSample samp = materialSample(matType, matParam, norm, wo, Importance, sample3D(s));
+		BSDFSample samp = materialSample(matType, matParam, surf.ns, wo, Importance, sample3D(s));
 		vec3 wi = samp.wi;
 		float bsdfPdf = samp.pdf;
 		vec3 bsdf = samp.bsdf;
 		uint flag = samp.flag;
 		bool deltaBsdf = (flag == SpecRefl || flag == SpecTrans);
 
+		if (bsdfPdf < 1e-8 || isnan(bsdfPdf))
+			break;
 		if (uRussianRoulette)
 		{
 			float continueProb = min(maxComponent(bsdf / bsdfPdf), 1.0);
@@ -138,11 +139,8 @@ void lightIntegTrace(inout Sampler s)
 			throughput /= continueProb;
 		}
 
-		float cosWi = deltaBsdf ? 1.0 : satDot(norm, wi);
-		if (bsdfPdf < 1e-8 || isnan(bsdfPdf))
-			break;
-
-		throughput *= bsdf * cosWi/ bsdfPdf;
+		float cosWi = deltaBsdf ? 1.0 : abs(dot(surf.ng, wi) * dot(surf.ns, wo) / dot(surf.ng, wo));
+		throughput *= bsdf * cosWi / bsdfPdf;
 		ray = rayOffseted(pos, wi);
 		wo = -wi;
 	}
@@ -150,17 +148,10 @@ void lightIntegTrace(inout Sampler s)
 
 void main()
 {
-	ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
-	vec2 texSize = vec2(uFilmSize);
-
+	uint id = gl_GlobalInvocationID.x;
 	Sampler sampleIdx = 0;
-	vec2 scrCoord = vec2(coord) / texSize;
 
-	vec2 noiseCoord = texture(uNoiseTex, scrCoord).xy;
-	noiseCoord = texture(uNoiseTex, noiseCoord).xy;
-	vec2 texCoord = texSize * noiseCoord;
-	randSeed = (uint(texCoord.x) * uFreeCounter) + uint(texCoord.y);
-	sampleSeed = uint(texCoord.x) * uint(texCoord.y);
+	setRngSeed(uSpp * (1536 * uBlocksOnePass) + id + uFreeCounter);
 
 	sampleOffset = uSpp * uSampleDim;
 	if (sampleOffset > uSampleNum * uSampleDim) sampleOffset -= uSampleNum * uSampleDim;
