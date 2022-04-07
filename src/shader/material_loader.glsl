@@ -132,6 +132,24 @@ vec4 materialBSDFAndPdf(uint matType, BSDFParam param, vec3 wo, vec3 wi, vec3 n,
 	return vec4(lambertian(wo, wi, n, param, mode), lambertianPdf(wo, wi, n, param, mode));
 }
 
+float materialPdf(uint matType, BSDFParam param, vec3 wo, vec3 wi, vec3 n, TransportMode mode)
+{
+	switch (matType)
+	{
+	case Lambertian:
+		return lambertianPdf(wo, wi, n, param, mode);
+	case PrincipledBRDF:
+		return principledBRDFPdf(wo, wi, n, param, mode);
+	case MetalWorkflow:
+		return metalWorkflowPdf(wo, wi, n, param, mode);
+	case Dielectric:
+		return dielectricPdf(wo, wi, n, param, mode);
+	case ThinDielectric:
+		return 0.0;
+	}
+	return lambertianPdf(wo, wi, n, param, mode);
+}
+
 BSDFSample materialSample(uint matType, BSDFParam param, vec3 n, vec3 wo, TransportMode mode, vec3 u)
 {
 	switch (matType)

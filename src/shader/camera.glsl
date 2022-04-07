@@ -19,7 +19,7 @@ struct CameraPdf
 	float pdfDir;
 };
 
-CameraPdf cameraPdf(float pdfPos, float pdfDir)
+CameraPdf makeCameraPdf(float pdfPos, float pdfDir)
 {
 	CameraPdf ret;
 	ret.pdfPos = pdfPos;
@@ -124,4 +124,19 @@ CameraIiSample thinLensCameraSampleIi(vec3 ref, vec2 u)
 	float pdf = dist * dist / (cosTheta * lensArea);
 
 	return makeCameraIiSample(wi, Ie, dist, uv, pdf);
+}
+
+CameraPdf thinLensCameraPdfIe(Ray ray)
+{
+	float cosTheta = dot(uCamF, ray.dir);
+	if (cosTheta < 1e-6)
+		return makeCameraPdf(0.0, 0.0);
+
+	vec2 pRaster = thinLensCameraRasterPos(ray);
+	if (!inFilmBound(pRaster))
+		return makeCameraPdf(0.0, 0.0);
+
+	float pdfPos = thinLensCameraDelta() ? 1.0 : 1.0 / (Pi * uLensRadius * uLensRadius);
+	float pdfDir = 1.0 / (cosTheta * cosTheta * cosTheta);
+	return makeCameraPdf(pdfPos, pdfDir);
 }

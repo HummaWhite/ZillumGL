@@ -124,11 +124,10 @@ struct TriplePathIntegParam
 	int maxDepth = 4;
 	bool russianRoulette = false;
 	int LPTBlocksOnePass = 32;
-	int LPTPassPerPTPass = 8;
+	int LPTLoopsPerPass = 4;
 	bool finiteSample = false;
 	int maxSample = 64;
-	float sppPT = 0.0f;
-	float sppLPT = 0.0f;
+	float samplePerPixel = 0.0f;
 };
 
 class TriplePathIntegrator :
@@ -142,13 +141,11 @@ public:
 	void renderProgressGUI();
 
 	TexturePtr getFrame() { return mFrameTex; }
-	float resultScale() const { return 1.0f / (mParam.sppPT + mParam.sppLPT); }
+	float resultScale() const { return 1.0f / mParam.samplePerPixel; }
 
 private:
 	void recreateFrameTex(int width, int height);
 	void updateUniforms(const Scene& scene, int width, int height);
-	void PTPass();
-	void LPTPass();
 
 public:
 	TriplePathIntegParam mParam;
@@ -156,7 +153,8 @@ public:
 private:
 	Texture2DPtr mFrameTex;
 	Texture2DPtr mFilmTex;
-	ShaderPtr mShader;
+	ShaderPtr mPTShader;
+	ShaderPtr mLPTShader;
 	ShaderPtr mImageCopyShader;
 	ShaderPtr mImageClearShader;
 };

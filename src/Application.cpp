@@ -13,6 +13,7 @@ GLFWwindow* mainWindow = nullptr;
 
 std::shared_ptr<NaivePathIntegrator> naivePathTracer;
 std::shared_ptr<LightPathIntegrator> lightTracer;
+std::shared_ptr<TriplePathIntegrator> triplePathTracer;
 std::shared_ptr<BVHDisplayIntegrator> bvhDisplayer;
 IntegratorPtr integrator;
 
@@ -216,6 +217,8 @@ void init(int width, int height, const std::string& title, const File::path& sce
 	bvhDisplayer->init(scene, width, height);
 	lightTracer = std::make_shared<LightPathIntegrator>();
 	lightTracer->init(scene, width, height);
+	triplePathTracer = std::make_shared<TriplePathIntegrator>();
+	triplePathTracer->init(scene, width, height);
 
 	integrator = naivePathTracer;
 
@@ -362,8 +365,8 @@ void renderGUI()
 				reset();
 			ImGui::Separator();
 
-			const char* IntegNames[] = { "NaivePath", "LightPath", "BVHDisplay" };
-			IntegratorPtr integs[] = { naivePathTracer, lightTracer, bvhDisplayer };
+			const char* IntegNames[] = { "NaivePath", "LightPath", "TriplePath", "BVHDisplay" };
+			IntegratorPtr integs[] = { naivePathTracer, lightTracer, triplePathTracer, bvhDisplayer };
 			if (ImGui::Combo("Integrator", &GUI::integIndex, IntegNames, IM_ARRAYSIZE(IntegNames)))
 			{
 				integrator = integs[GUI::integIndex];

@@ -120,12 +120,8 @@ LightLeSample lightSampleOneLe(int id, vec4 u)
 		1.0 / triangleArea(triId), samp.w);
 }
 
-LightLiSample lightSampleOneLi(vec3 x, vec4 u)
+LightLiSample lightSampleLi(int id, vec3 x, vec2 u)
 {
-	int cx = int(float(uNumLightTriangles) * u.x);
-	float cy = u.y;
-
-	int id = (cy < texelFetch(uLightProb, cx).r) ? cx : texelFetch(uLightAlias, cx).r;
 	int triId = id + uObjPrimCount;
 
 	int ia = texelFetch(uIndices, triId * 3 + 0).r;
@@ -136,7 +132,7 @@ LightLiSample lightSampleOneLi(vec3 x, vec4 u)
 	vec3 b = texelFetch(uVertices, ib).xyz;
 	vec3 c = texelFetch(uVertices, ic).xyz;
 
-	vec3 y = sampleTriangleUniform(a, b, c, u.zw);
+	vec3 y = sampleTriangleUniform(a, b, c, u);
 	vec3 wi = normalize(y - x);
 	vec3 norm = triangleSurfaceInfo(triId, y).ng;
 	float cosTheta = dot(norm, -wi);
@@ -157,6 +153,12 @@ LightLiSample lightSampleOneLi(vec3 x, vec4 u)
 	float pdfSample = luminance(texelFetch(uLightPower, id).rgb) / uLightSum;
 	pdf *= pdfSample;
 	return makeLightLiSample(wi, weight / pdf, pdf);
+}
+
+LightLiSample lightSampleOneLi(vec3 x, vec4 u)
+{
+	int id = lightSampleOne(u.xy);
+	return lightSampleLi(id, x, u.zw);
 }
 
 vec3 envLe(vec3 wi)

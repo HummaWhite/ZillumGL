@@ -32,13 +32,25 @@ uniform int uMaxDepth;
 
 @include material_loader.glsl
 
-vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
+vec3 pathIntegTrace(Ray ray, inout Sampler s)
 {
+	float primDist;
+	int id = bvhHit(ray, primDist);
+	vec3 primPoint = rayPoint(ray, primDist);
+
+	if (id == -1)
+		return envLe(ray.dir);
+	else if (id - uObjPrimCount >= 0)
+		return lightLe(id - uObjPrimCount, primPoint, -ray.dir);
+
+	ray.ori = primPoint;
+	SurfaceInfo surf = triangleSurfaceInfo(id, ray.ori);
+
 	vec3 result = vec3(0.0);
 	vec3 throughput = vec3(1.0);
 	float etaScale = 1.0;
 
-	for (int bounce = 0; bounce <= uMaxDepth; bounce++)
+	for (int bounce = 1; bounce <= uMaxDepth; bounce++)
 	{
 		vec3 pos = ray.ori;
 		vec3 wo = -ray.dir;
@@ -133,25 +145,6 @@ vec3 pathIntegTrace(Ray ray, int id, SurfaceInfo surf, inout Sampler s)
 	return result;
 }
 
-vec3 getResult(Ray ray, inout Sampler s)
-{
-	float dist;
-	int primId = bvhHit(ray, dist);
-	int lightId = primId - uObjPrimCount;
-	vec3 hitPoint = rayPoint(ray, dist);
-
-	if (primId == -1)
-		return envLe(ray.dir);
-	else if (lightId >= 0)
-		return lightLe(primId - uObjPrimCount, hitPoint, -ray.dir);
-	else
-	{
-		ray.ori = hitPoint;
-		SurfaceInfo surf = triangleSurfaceInfo(primId, ray.ori);
-		return pathIntegTrace(ray, primId, surf, s);
-	}
-}
-
 void main()
 {
 	ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
@@ -174,7 +167,7 @@ void main()
 	if (sampleOffset > uSampleNum * uSampleDim) sampleOffset -= uSampleNum * uSampleDim;
 
 	Ray ray = thinLensCameraSampleRay(scrCoord, sample4D(sampleIdx));
-	vec3 result = getResult(ray, sampleIdx);
+	vec3 result = pathIntegTrace(ray, sampleIdx);
 	if (BUG) result = BUGVAL;
 
 	vec3 lastRes = (uSpp == 0) ? vec3(0.0) : imageLoad(uFrame, coord).rgb;
