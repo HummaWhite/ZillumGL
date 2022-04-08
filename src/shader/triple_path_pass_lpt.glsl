@@ -132,16 +132,17 @@ void traceLightPath(inout Sampler s)
 					float coefToSurf = remap(thinLensCameraPdfIe(makeRay(pCam, -ciSamp.wi)).pdfDir * satDot(surf.ns, ciSamp.wi));
 					float coefToPrev = remap(materialPdf(matType, matParam, ciSamp.wi, wo, surf.ns, Radiance) *
 						absDot(prevSurf.ns, wo));
-					float coefDist = remap(square(ciSamp.dist));
+					float coefDist = remap(ciSamp.dist * ciSamp.dist);
 
 					float coef0 = coefToSurf * coefToPrev / coefDist;
-					float coef1 = ((bounce == 1) ? 1.0 : coefToPrev) / coefDist;
+					float coef1 = ((bounce == 1) ? 1.0 : coefToPrev) * coefToSurf / coefDist;
 					float weight = weightT1(s0t1 * coef0, s1t1 * coef1);
 					vec3 res = contrib * weight;
 
 					if (BUG)
 						res = BUGVAL;
 					if (!hasNan(res) && !isnan(ciSamp.pdf) && ciSamp.pdf > 1e-8 && !isBlack(res))
+						//if (bounce == uMaxDepth)
 						accumulateFilm(ciSamp.uv, res);
 				}
 			}

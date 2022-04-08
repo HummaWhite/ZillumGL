@@ -298,14 +298,14 @@ void materialEditor(Scene& scene, int matIndex)
 	else if (m.type == Material::Dielectric)
 	{
 		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
-			ImGui::SliderFloat("IOR", &m.subsurface, 0.01f, 3.5f) ||
+			ImGui::SliderFloat("IOR", &m.ior, 0.01f, 3.5f) ||
 			ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
 			writeMat = true;
 	}
 	else if (m.type == Material::ThinDielectric)
 	{
 		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
-			ImGui::SliderFloat("IOR", &m.subsurface, 0.01f, 3.5f))
+			ImGui::SliderFloat("IOR", &m.ior, 0.01f, 3.5f))
 			writeMat = true;
 	}
 
