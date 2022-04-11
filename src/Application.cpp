@@ -15,6 +15,7 @@ std::shared_ptr<NaivePathIntegrator> naivePathTracer;
 std::shared_ptr<LightPathIntegrator> lightTracer;
 std::shared_ptr<TriplePathIntegrator> triplePathTracer;
 std::shared_ptr<BVHDisplayIntegrator> bvhDisplayer;
+std::shared_ptr<RasterView> rasterViewer;
 IntegratorPtr integrator;
 
 namespace InputRecord
@@ -178,6 +179,8 @@ void init(int width, int height, const std::string& title, const File::path& sce
 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
 		Error::exit("failed to init GLAD");
 
+	glEnable(GL_DEPTH_TEST);
+
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsClassic();
@@ -212,19 +215,23 @@ void init(int width, int height, const std::string& title, const File::path& sce
 	scene.createGLContext();
 
 	naivePathTracer = std::make_shared<NaivePathIntegrator>();
-	naivePathTracer->init(scene, width, height);
-	bvhDisplayer = std::make_shared<BVHDisplayIntegrator>();
-	bvhDisplayer->init(scene, width, height);
+	naivePathTracer->init(scene, width, height, pipeline);
 	lightTracer = std::make_shared<LightPathIntegrator>();
-	lightTracer->init(scene, width, height);
+	lightTracer->init(scene, width, height, pipeline);
 	triplePathTracer = std::make_shared<TriplePathIntegrator>();
-	triplePathTracer->init(scene, width, height);
+	triplePathTracer->init(scene, width, height, pipeline);
+	bvhDisplayer = std::make_shared<BVHDisplayIntegrator>();
+	bvhDisplayer->init(scene, width, height, pipeline);
+	rasterViewer = std::make_shared<RasterView>();
+	rasterViewer->init(scene, width, height, pipeline);
 
 	integrator = naivePathTracer;
 
 	postShader = Shader::create("post_proc.glsl");
 	postShader->set1i("uToneMapper", Config::toneMapping);
-	postShader->setTexture("uFrame", integrator->getFrame(), 0);
+	auto framePtr = integrator->getFrame();
+	if (framePtr)
+		postShader->setTexture("uFrame", framePtr, 0);
 
 	VerticalSyncStatus(Config::verticalSync);
 }
@@ -365,11 +372,13 @@ void renderGUI()
 				reset();
 			ImGui::Separator();
 
-			const char* IntegNames[] = { "NaivePath", "LightPath", "TriplePath", "BVHDisplay" };
-			IntegratorPtr integs[] = { naivePathTracer, lightTracer, triplePathTracer, bvhDisplayer };
+			const char* IntegNames[] = { "NaivePath", "LightPath", "TriplePath", "BVHDisplay", "RasterView" };
+			IntegratorPtr integs[] = { naivePathTracer, lightTracer, triplePathTracer, bvhDisplayer, rasterViewer };
 			if (ImGui::Combo("Integrator", &GUI::integIndex, IntegNames, IM_ARRAYSIZE(IntegNames)))
 			{
 				integrator = integs[GUI::integIndex];
+				verticalSync = GUI::integIndex == 4;
+				VerticalSyncStatus(GUI::integIndex == 4);
 				reset();
 			}
 			integrator->renderSettingsGUI();
@@ -497,11 +506,14 @@ int run()
 
 		integrator->renderOnePass();
 
-		pipeline->clear({ 0.0f, 0.0f, 0.0f, 1.0f });
-		postShader->setTexture("uFrame", integrator->getFrame(), 0);
-		postShader->set1f("uResultScale", integrator->resultScale());
-		pipeline->draw(screenVB, VertexArray::layoutPos2(), postShader);
-
+		auto frameTex = integrator->getFrame();
+		if (frameTex)
+		{
+			pipeline->clear({ 0.0f, 0.0f, 0.0f, 1.0f });
+			postShader->setTexture("uFrame", frameTex, 0);
+			postShader->set1f("uResultScale", integrator->resultScale());
+			pipeline->draw(screenVB, VertexArray::layoutPos2(), postShader);
+		}
 		renderGUI();
 
 		glfwSwapBuffers(mainWindow);

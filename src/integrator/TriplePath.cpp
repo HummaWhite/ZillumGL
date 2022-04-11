@@ -6,46 +6,6 @@ const int BlockSizeX = 48;
 const int BlockSizeY = 32;
 const int LPTBlockSize = 1536;
 
-const ShaderSource FilmClearShader =
-{
-	"", "", "",
-	"#version 450\n"
-	"layout(local_size_x = 48, local_size_y = 32, local_size_z = 1) in;\n"
-	"layout(r32f, binding = 0) uniform image2D uImage;\n"
-	"uniform ivec2 uTexSize;\n"
-	"\n"
-	"void main()\n"
-	"{\n"
-	"    ivec2 iuv = ivec2(gl_GlobalInvocationID.xy);\n"
-	"    if (iuv.x >= uTexSize.x || iuv.y >= uTexSize.y)\n"
-	"        return;\n"
-	"    imageStore(uImage, ivec2(iuv.x * 3 + 0, iuv.y), vec4(0.0, 0.0, 0.0, 1.0));\n"
-	"    imageStore(uImage, ivec2(iuv.x * 3 + 1, iuv.y), vec4(0.0, 0.0, 0.0, 1.0));\n"
-	"    imageStore(uImage, ivec2(iuv.x * 3 + 2, iuv.y), vec4(0.0, 0.0, 0.0, 1.0));\n"
-	"}\n"
-};
-
-const ShaderSource ImageCopyShader =
-{
-	"", "", "",
-	"#version 450\n"
-	"layout(local_size_x = 48, local_size_y = 32, local_size_z = 1) in;\n"
-	"layout(r32f, binding = 0) uniform readonly image2D uInImage;\n"
-	"layout(rgba32f, binding = 1) uniform writeonly image2D uOutImage;\n"
-	"uniform ivec2 uTexSize;\n"
-	"\n"
-	"void main()"
-	"{\n"
-	"    ivec2 iuv = ivec2(gl_GlobalInvocationID.xy);\n"
-	"    if (iuv.x >= uTexSize.x || iuv.y >= uTexSize.y)\n"
-	"        return;\n"
-	"    float r = imageLoad(uInImage, ivec2(iuv.x * 3 + 0, iuv.y)).r;\n"
-	"    float g = imageLoad(uInImage, ivec2(iuv.x * 3 + 1, iuv.y)).r;\n"
-	"    float b = imageLoad(uInImage, ivec2(iuv.x * 3 + 2, iuv.y)).r;\n"
-	"    imageStore(uOutImage, iuv, vec4(r, g, b, 1.0));\n"
-	"}\n"
-};
-
 void TriplePathIntegrator::recreateFrameTex(int width, int height)
 {
 	mFilmTex = Texture2D::createEmpty(width * 3, height, TextureFormat::Col1x32f);
@@ -120,7 +80,7 @@ void TriplePathIntegrator::updateUniforms(const Scene& scene, int width, int hei
 	mImageClearShader->set2i("uTexSize", width, height);
 }
 
-void TriplePathIntegrator::init(const Scene& scene, int width, int height)
+void TriplePathIntegrator::init(const Scene& scene, int width, int height, PipelinePtr ctx)
 {
 	mPTShader = Shader::create("triple_path_pass_pt.glsl", { BlockSizeX, BlockSizeY, 1 },
 		"#extension GL_EXT_texture_array : enable\n"
@@ -128,8 +88,8 @@ void TriplePathIntegrator::init(const Scene& scene, int width, int height)
 	mLPTShader = Shader::create("triple_path_pass_lpt.glsl", { LPTBlockSize, 1, 1 },
 		"#extension GL_EXT_texture_array : enable\n"
 		"#extension GL_NV_shader_atomic_float : enable\n");
-	mImageCopyShader = Shader::create("TriplePathIntegrator:: image_copy.glsl", ImageCopyShader);
-	mImageClearShader = Shader::create("TriplePathIntegrator:: film_clear.glsl", FilmClearShader);
+	mImageCopyShader = Shader::create("util/img_copy_1x32f_4x32f.glsl", { BlockSizeX, BlockSizeY, 1 });
+	mImageClearShader = Shader::create("util/img_clear_1x32f.glsl", { BlockSizeX, BlockSizeY, 1 });
 	recreateFrameTex(width, height);
 	updateUniforms(scene, width, height);
 }

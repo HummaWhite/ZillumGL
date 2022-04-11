@@ -62,7 +62,7 @@ void NaivePathIntegrator::updateUniforms(const Scene& scene, int width, int heig
 	mShader->set1f("uLightSamplePortion", mParam.lightPortion);
 }
 
-void NaivePathIntegrator::init(const Scene& scene, int width, int height)
+void NaivePathIntegrator::init(const Scene& scene, int width, int height, PipelinePtr ctx)
 {
 	mShader = Shader::create("path_integ_naive.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 },
 		"#extension GL_EXT_texture_array : enable\n");
@@ -109,7 +109,7 @@ void NaivePathIntegrator::reset(const Scene& scene, int width, int height)
 void NaivePathIntegrator::renderSettingsGUI()
 {
 	ImGui::SetNextItemWidth(80.0f);
-	if (ImGui::SliderInt("Max depth", &mParam.maxDepth, 0, 32))
+	if (ImGui::InputInt("Max depth", &mParam.maxDepth, 1, 1))
 		setShouldReset();
 
 	ImGui::SameLine();

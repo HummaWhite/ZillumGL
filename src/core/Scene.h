@@ -37,7 +37,7 @@ public:
 
 	void addObject(ModelInstancePtr object);
 	void addMaterial(const Material& material);
-	void addLight(ModelInstancePtr light, const glm::vec3& radiance);
+	void addLight(ModelInstancePtr light, const glm::vec3& power);
 
 public:
 	std::vector<ModelInstancePtr> objects;

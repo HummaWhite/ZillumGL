@@ -38,7 +38,7 @@ void BVHDisplayIntegrator::updateUniforms(const Scene& scene, int width, int hei
 	mShader->set2i("uFilmSize", width, height);
 }
 
-void BVHDisplayIntegrator::init(const Scene& scene, int width, int height)
+void BVHDisplayIntegrator::init(const Scene& scene, int width, int height, PipelinePtr ctx)
 {
 	mShader = Shader::create("bvh_display.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 });
 	recreateFrameTex(width, height);

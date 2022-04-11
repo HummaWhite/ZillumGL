@@ -22,7 +22,7 @@ public:
 	};
 
 public:
-	virtual void init(const Scene& scene, int width, int height) = 0;
+	virtual void init(const Scene& scene, int width, int height, PipelinePtr ctx) = 0;
 	virtual void renderOnePass() = 0;
 	virtual void reset(const Scene& scene, int width, int height) = 0;
 	virtual void renderSettingsGUI() = 0;
@@ -60,7 +60,7 @@ class NaivePathIntegrator :
 	public Integrator
 {
 public:
-	void init(const Scene& scene, int width, int height);
+	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
 	void renderOnePass();
 	void reset(const Scene& scene, int width, int height);
 	void renderSettingsGUI();
@@ -95,7 +95,7 @@ class LightPathIntegrator :
 	public Integrator
 {
 public:
-	void init(const Scene& scene, int width, int height);
+	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
 	void renderOnePass();
 	void reset(const Scene& scene, int width, int height);
 	void renderSettingsGUI();
@@ -134,7 +134,7 @@ class TriplePathIntegrator :
 	public Integrator
 {
 public:
-	void init(const Scene& scene, int width, int height);
+	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
 	void renderOnePass();
 	void reset(const Scene& scene, int width, int height);
 	void renderSettingsGUI();
@@ -173,7 +173,7 @@ class BVHDisplayIntegrator :
 	public Integrator
 {
 public:
-	void init(const Scene& scene, int width, int height);
+	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
 	void renderOnePass();
 	void reset(const Scene& scene, int width, int height);
 	void renderSettingsGUI() {}
@@ -192,4 +192,27 @@ private:
 	Texture2DPtr mFrameTex;
 	ShaderPtr mShader;
 	int mMatIndex = 0;
+};
+
+class RasterView :
+	public Integrator
+{
+public:
+	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
+	void renderOnePass();
+	void reset(const Scene& scene, int width, int height);
+	void renderSettingsGUI();
+	void renderProgressGUI() {}
+
+	TexturePtr getFrame() { return TexturePtr(nullptr); }
+	float resultScale() const { return 1.0f; }
+
+private:
+	PipelinePtr mCtx;
+	ShaderPtr mShader;
+	Camera mCamera;
+	std::vector<ModelInstancePtr> mObjects;
+	std::vector<std::pair<ModelInstancePtr, glm::vec3>> mLights;
+
+	int mDisplayChannel = 0;
 };

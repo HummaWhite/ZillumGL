@@ -162,7 +162,7 @@ MeshInstancePtr Resource::createNewMeshInstance(aiMesh* mesh, const aiScene* sce
 			meshInstance->texIndex = Resource::addImage(path, ImageDataType::Int8);
 		}
 	}
-	//meshData->createGLContext();
+	meshData->createGLContext();
 	meshInstance->meshData = meshData;
 	return meshInstance;
 }
