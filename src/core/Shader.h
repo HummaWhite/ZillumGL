@@ -85,7 +85,8 @@ class Shader :
 {
 public:
 	Shader(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr);
-	Shader(const std::string& name, const ShaderSource& source);
+	Shader(const ShaderSource& source, const std::string& name);
+	Shader(const File::path& binaryFile);
 	~Shader();
 
 	void enable();
@@ -111,9 +112,10 @@ public:
 
 	std::string name() const { return mName; }
 
-	static ShaderPtr create(const File::path& path, const glm::ivec3& computeSize = glm::ivec3(1),
+	static ShaderPtr createFromText(const File::path& path, const glm::ivec3& computeSize = glm::ivec3(1),
 		const std::string& extensionStr = "");
-	static ShaderPtr create(const std::string& name, const ShaderSource& source);
+	static ShaderPtr createFromMem(const ShaderSource& source, const std::string& name);
+	static ShaderPtr createFromBinary(const File::path& binaryFile);
 
 private:
 	enum class ShaderLoadStat

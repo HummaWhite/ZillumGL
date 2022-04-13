@@ -36,15 +36,14 @@ vec3 pathIntegTrace(Ray ray, inout Sampler s)
 {
 	float primDist;
 	int id = bvhHit(ray, primDist);
-	vec3 primPoint = rayPoint(ray, primDist);
+	vec3 pos = rayPoint(ray, primDist);
 
 	if (id == -1)
 		return envLe(ray.dir);
 	else if (id - uObjPrimCount >= 0)
-		return lightLe(id - uObjPrimCount, primPoint, -ray.dir);
+		return lightLe(id - uObjPrimCount, pos, -ray.dir);
 
-	ray.ori = primPoint;
-	SurfaceInfo surf = triangleSurfaceInfo(id, ray.ori);
+	vec3 wo = -ray.dir;
 
 	vec3 result = vec3(0.0);
 	vec3 throughput = vec3(1.0);
@@ -52,8 +51,7 @@ vec3 pathIntegTrace(Ray ray, inout Sampler s)
 
 	for (int bounce = 1; bounce <= uMaxDepth; bounce++)
 	{
-		vec3 pos = ray.ori;
-		vec3 wo = -ray.dir;
+		SurfaceInfo surf = triangleSurfaceInfo(id, pos);
 
 		int matTexId = texelFetch(uMatTexIndices, id).r;
 		int matId = matTexId & 0x0000ffff;
@@ -94,12 +92,12 @@ vec3 pathIntegTrace(Ray ray, inout Sampler s)
 			break;
 		throughput *= bsdf / bsdfPdf * (deltaBsdf ? 1.0 : absDot(surf.ns, wi));
 
-		Ray newRay = rayOffseted(pos, wi);
+		ray = rayOffseted(pos, wi);
 
 		float dist;
-		int primId = bvhHit(newRay, dist);
+		int primId = bvhHit(ray, dist);
 		int lightId = primId - uObjPrimCount;
-		vec3 hitPoint = rayPoint(newRay, dist);
+		vec3 nextPos = rayPoint(ray, dist);
 
 		if (primId == -1)
 		{
@@ -115,11 +113,11 @@ vec3 pathIntegTrace(Ray ray, inout Sampler s)
 		}
 		else if (lightId >= 0)
 		{
-			vec3 radiance = lightLe(lightId, hitPoint, -wi);
+			vec3 radiance = lightLe(lightId, nextPos, -wi);
 			float weight = 1.0;
 			if (uSampleLight && !deltaBsdf)
 			{
-				float lightPdf = lightPdfLi(lightId, pos, hitPoint) * pdfSelectLight(lightId);
+				float lightPdf = lightPdfLi(lightId, pos, nextPos) * pdfSelectLight(lightId);
 				weight = (lightPdf <= 0.0) ? 0.0 : biHeuristic(bsdfPdf, lightPdf);
 			}
 			result += radiance * throughput * weight;
@@ -137,10 +135,9 @@ vec3 pathIntegTrace(Ray ray, inout Sampler s)
 		if (flag == SpecTrans || flag == GlosTrans)
 			etaScale *= square(samp.eta);
 
-		surf = triangleSurfaceInfo(primId, hitPoint);
 		id = primId;
-		newRay.ori = hitPoint;
-		ray = newRay;
+		pos = nextPos;
+		wo = -wi;
 	}
 	return result;
 }

@@ -70,11 +70,11 @@ void LightPathIntegrator::updateUniforms(const Scene& scene, int width, int heig
 
 void LightPathIntegrator::init(const Scene& scene, int width, int height, PipelinePtr ctx)
 {
-	mShader = Shader::create("light_path_integ.glsl", { WorkgroupSize, 1, 1 },
+	mShader = Shader::createFromText("light_path_integ.glsl", { WorkgroupSize, 1, 1 },
 		"#extension GL_EXT_texture_array : enable\n"
 		"#extension GL_NV_shader_atomic_float : enable\n");
-	mImageCopyShader = Shader::create("util/img_copy_1x32f_4x32f.glsl", { ImageOpSizeX, ImageOpSizeY, 1 });
-	mImageClearShader = Shader::create("util/img_clear_1x32f.glsl", { ImageOpSizeX, ImageOpSizeY, 1 });
+	mImageCopyShader = Shader::createFromText("util/img_copy_1x32f_4x32f.glsl", { ImageOpSizeX, ImageOpSizeY, 1 });
+	mImageClearShader = Shader::createFromText("util/img_clear_1x32f.glsl", { ImageOpSizeX, ImageOpSizeY, 1 });
 	recreateFrameTex(width, height);
 	updateUniforms(scene, width, height);
 }

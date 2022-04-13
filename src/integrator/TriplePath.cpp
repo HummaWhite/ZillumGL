@@ -1,7 +1,5 @@
 #include "../core/Integrator.h"
 
-#include "../core/Integrator.h"
-
 const int BlockSizeX = 48;
 const int BlockSizeY = 32;
 const int LPTBlockSize = 1536;
@@ -12,6 +10,7 @@ void TriplePathIntegrator::recreateFrameTex(int width, int height)
 	mFilmTex->setFilter(TextureFilter::Nearest);
 	mFrameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
 	mFrameTex->setFilter(TextureFilter::Nearest);
+
 	Pipeline::bindTextureToImage(mFilmTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col1x32f);
 	Pipeline::bindTextureToImage(mFrameTex, 1, 0, ImageAccess::WriteOnly, TextureFormat::Col4x32f);
 }
@@ -82,14 +81,14 @@ void TriplePathIntegrator::updateUniforms(const Scene& scene, int width, int hei
 
 void TriplePathIntegrator::init(const Scene& scene, int width, int height, PipelinePtr ctx)
 {
-	mPTShader = Shader::create("triple_path_pass_pt.glsl", { BlockSizeX, BlockSizeY, 1 },
+	mPTShader = Shader::createFromText("triple_path_pass_pt.glsl", { BlockSizeX, BlockSizeY, 1 },
 		"#extension GL_EXT_texture_array : enable\n"
 		"#extension GL_NV_shader_atomic_float : enable\n");
-	mLPTShader = Shader::create("triple_path_pass_lpt.glsl", { LPTBlockSize, 1, 1 },
+	mLPTShader = Shader::createFromText("triple_path_pass_lpt.glsl", { LPTBlockSize, 1, 1 },
 		"#extension GL_EXT_texture_array : enable\n"
 		"#extension GL_NV_shader_atomic_float : enable\n");
-	mImageCopyShader = Shader::create("util/img_copy_1x32f_4x32f.glsl", { BlockSizeX, BlockSizeY, 1 });
-	mImageClearShader = Shader::create("util/img_clear_1x32f.glsl", { BlockSizeX, BlockSizeY, 1 });
+	mImageCopyShader = Shader::createFromText("util/img_copy_1x32f_4x32f.glsl", { BlockSizeX, BlockSizeY, 1 });
+	mImageClearShader = Shader::createFromText("util/img_clear_1x32f.glsl", { BlockSizeX, BlockSizeY, 1 });
 	recreateFrameTex(width, height);
 	updateUniforms(scene, width, height);
 }

@@ -14,6 +14,7 @@ GLFWwindow* mainWindow = nullptr;
 std::shared_ptr<NaivePathIntegrator> naivePathTracer;
 std::shared_ptr<LightPathIntegrator> lightTracer;
 std::shared_ptr<TriplePathIntegrator> triplePathTracer;
+std::shared_ptr<StreamedPathIntegrator> streamedPathTracer;
 std::shared_ptr<BVHDisplayIntegrator> bvhDisplayer;
 std::shared_ptr<RasterView> rasterViewer;
 IntegratorPtr integrator;
@@ -220,6 +221,9 @@ void init(int width, int height, const std::string& title, const File::path& sce
 	lightTracer->init(scene, width, height, pipeline);
 	triplePathTracer = std::make_shared<TriplePathIntegrator>();
 	triplePathTracer->init(scene, width, height, pipeline);
+	streamedPathTracer = std::make_shared<StreamedPathIntegrator>();
+	streamedPathTracer->init(scene, width, height, pipeline);
+
 	bvhDisplayer = std::make_shared<BVHDisplayIntegrator>();
 	bvhDisplayer->init(scene, width, height, pipeline);
 	rasterViewer = std::make_shared<RasterView>();
@@ -227,7 +231,7 @@ void init(int width, int height, const std::string& title, const File::path& sce
 
 	integrator = naivePathTracer;
 
-	postShader = Shader::create("post_proc.glsl");
+	postShader = Shader::createFromText("post_proc.glsl");
 	postShader->set1i("uToneMapper", Config::toneMapping);
 	auto framePtr = integrator->getFrame();
 	if (framePtr)
@@ -372,13 +376,15 @@ void renderGUI()
 				reset();
 			ImGui::Separator();
 
-			const char* IntegNames[] = { "NaivePath", "LightPath", "TriplePath", "BVHDisplay", "RasterView" };
-			IntegratorPtr integs[] = { naivePathTracer, lightTracer, triplePathTracer, bvhDisplayer, rasterViewer };
+			const char* IntegNames[] = {
+				"NaivePath", "LightPath", "TriplePath", "StreamedPath", "BVHDisplay", "RasterView" };
+			IntegratorPtr integs[] = {
+				naivePathTracer, lightTracer, triplePathTracer, streamedPathTracer, bvhDisplayer, rasterViewer };
 			if (ImGui::Combo("Integrator", &GUI::integIndex, IntegNames, IM_ARRAYSIZE(IntegNames)))
 			{
 				integrator = integs[GUI::integIndex];
-				verticalSync = GUI::integIndex == 4;
-				VerticalSyncStatus(GUI::integIndex == 4);
+				verticalSync = GUI::integIndex == 5;
+				VerticalSyncStatus(GUI::integIndex == 5);
 				reset();
 			}
 			integrator->renderSettingsGUI();
@@ -409,12 +415,13 @@ void renderGUI()
 			}
 			ImGui::EndMenu();
 		}
-
+		
 		if (ImGui::BeginMenu("Material"))
 		{
 			ImGui::SliderInt("Index", &GUI::matIndex, 0, scene.materials.size() - 1);
 			bvhDisplayer->setMatIndex(GUI::matIndex);
 			bvhDisplayer->setShouldReset();
+			rasterViewer->setMatIndex(GUI::matIndex);
 			materialEditor(scene, GUI::matIndex);
 			ImGui::EndMenu();
 		}

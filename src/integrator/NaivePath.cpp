@@ -64,7 +64,7 @@ void NaivePathIntegrator::updateUniforms(const Scene& scene, int width, int heig
 
 void NaivePathIntegrator::init(const Scene& scene, int width, int height, PipelinePtr ctx)
 {
-	mShader = Shader::create("path_integ_naive.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 },
+	mShader = Shader::createFromText("path_integ_naive.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 },
 		"#extension GL_EXT_texture_array : enable\n");
 	recreateFrameTex(width, height);
 	updateUniforms(scene, width, height);

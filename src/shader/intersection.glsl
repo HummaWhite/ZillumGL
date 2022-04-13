@@ -146,6 +146,45 @@ float triangleArea(int id)
 	return triangleArea(a, b, c);
 }
 
+vec3 triangleNormalShad(int id, vec3 p)
+{
+	int ia = texelFetch(uIndices, id * 3 + 0).r;
+	int ib = texelFetch(uIndices, id * 3 + 1).r;
+	int ic = texelFetch(uIndices, id * 3 + 2).r;
+
+	vec3 a = texelFetch(uVertices, ia).xyz;
+	vec3 b = texelFetch(uVertices, ib).xyz;
+	vec3 c = texelFetch(uVertices, ic).xyz;
+
+	vec3 na = texelFetch(uNormals, ia).xyz;
+	vec3 nb = texelFetch(uNormals, ib).xyz;
+	vec3 nc = texelFetch(uNormals, ic).xyz;
+
+	vec3 pa = a - p;
+	vec3 pb = b - p;
+	vec3 pc = c - p;
+
+	float areaInv = 1.0 / length(cross(b - a, c - a));
+	float la = length(cross(pb, pc)) * areaInv;
+	float lb = length(cross(pc, pa)) * areaInv;
+	float lc = 1.0 - la - lb;
+
+	return normalize(na * la + nb * lb + nc * lc);
+}
+
+vec3 triangleNormalGeom(int id)
+{
+	int ia = texelFetch(uIndices, id * 3 + 0).r;
+	int ib = texelFetch(uIndices, id * 3 + 1).r;
+	int ic = texelFetch(uIndices, id * 3 + 2).r;
+
+	vec3 a = texelFetch(uVertices, ia).xyz;
+	vec3 b = texelFetch(uVertices, ib).xyz;
+	vec3 c = texelFetch(uVertices, ic).xyz;
+
+	return normalize(cross(c - a, c - b));
+}
+
 SurfaceInfo triangleSurfaceInfo(int id, vec3 p)
 {
 	SurfaceInfo ret;

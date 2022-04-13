@@ -30,11 +30,20 @@ Shader::Shader(const File::path& path, const glm::ivec3& computeSize, const std:
 	compileShader(source);
 }
 
-Shader::Shader(const std::string& name, const ShaderSource& source) :
+Shader::Shader(const ShaderSource& source, const std::string& name) :
 	mName(name), GLStateObject(GLStateObjectType::Shader)
 {
 	Error::line("[Shader " + name + "]");
 	compileShader(source);
+}
+
+Shader::Shader(const File::path& binaryFile) :
+	mName(binaryFile.generic_string()), GLStateObject(GLStateObjectType::Shader)
+{
+	std::fstream file;
+	file.open(binaryFile);
+
+	mId = glCreateProgram();
 }
 
 Shader::~Shader()
@@ -147,14 +156,19 @@ int Shader::getUniformLocation(GLuint programID, const std::string& name)
 	return glGetUniformLocation(programID, name.c_str());
 }
 
-ShaderPtr Shader::create(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr)
+ShaderPtr Shader::createFromText(const File::path& path, const glm::ivec3& computeSize, const std::string& extensionStr)
 {
 	return std::make_shared<Shader>(path, computeSize, extensionStr);
 }
 
-ShaderPtr Shader::create(const std::string& name, const ShaderSource& source)
+ShaderPtr Shader::createFromMem(const ShaderSource& source, const std::string& name)
 {
-	return std::make_shared<Shader>(name, source);
+	return std::make_shared<Shader>(source, name);
+}
+
+ShaderPtr Shader::createFromBinary(const File::path& binaryFile)
+{
+	return std::make_shared<Shader>(binaryFile);
 }
 
 void Shader::loadShader(std::fstream& file, ShaderSource& text, ShaderLoadStat stat,

@@ -83,6 +83,9 @@ vec3 traceCameraPath(Ray ray, inout Sampler s)
 
 	for (int bounce = 1; bounce <= uMaxDepth; bounce++)
 	{
+		if (bounce > 1)
+			surf = triangleSurfaceInfo(id, pos);
+
 		int matTexId = texelFetch(uMatTexIndices, id).r;
 		int matId = matTexId & 0x0000ffff;
 		int texId = matTexId >> 16;
@@ -177,9 +180,8 @@ vec3 traceCameraPath(Ray ray, inout Sampler s)
 		if (flag == SpecTrans || flag == GlosTrans)
 			etaScale *= square(samp.eta);
 
-		SurfaceInfo nextSurf = triangleSurfaceInfo(nextId, nextPos);
 		float coef = ((bounce == 1) ? 1.0 : remap(pdfDirToPrev * absDot(prevNorm, wo))) /
-			remap(pdfDirToNext * absDot(nextSurf.ns, wi));
+			remap(pdfDirToNext * absDot(triangleNormalShad(nextId, nextPos), wi));
 		t1s0 *= coef;
 		t1s1 *= coef;
 
@@ -187,7 +189,6 @@ vec3 traceCameraPath(Ray ray, inout Sampler s)
 		prevNorm = surf.ns;
 		pos = nextPos;
 		wo = -wi;
-		surf = nextSurf;
 		id = nextId;
 	}
 	return result;

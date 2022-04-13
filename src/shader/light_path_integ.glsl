@@ -1,6 +1,5 @@
 @type compute
 
-//layout(rgba32f, binding = 0) uniform image2D uFrame;
 layout(r32f, binding = 0) uniform image2D uFrame;
 bool BUG = false;
 vec3 BUGVAL = vec3(0.0);

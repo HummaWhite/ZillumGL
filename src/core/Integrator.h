@@ -194,6 +194,54 @@ private:
 	int mMatIndex = 0;
 };
 
+struct StreamedPTParam
+{
+	int maxDepth = 4;
+	bool russianRoulette = false;
+	bool sampleLight = true;
+	bool lightEnvUniformSample = false;
+	float lightPortion = 0.5f;
+	bool finiteSample = false;
+	int maxSample = 64;
+	int samplePerLaunch = 1536 * 32;
+	float samplePerPixel = 0.0f;
+};
+
+class StreamedPathIntegrator :
+	public Integrator
+{
+public:
+	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
+	void renderOnePass();
+	void reset(const Scene& scene, int width, int height);
+	void renderSettingsGUI();
+	void renderProgressGUI();
+
+	TexturePtr getFrame() { return mFrameTex; }
+	float resultScale() const { return 1.0f / mParam.samplePerPixel; }
+
+private:
+	void recreateFrameTex(int width, int height);
+	void updateUniforms(const Scene& scene, int width, int height);
+
+private:
+	Texture2DPtr mFrameTex;
+	Texture2DPtr mFilmTex;
+
+	TextureBufferedPtr mPositionQueue;
+	TextureBufferedPtr mThroughputQueue;
+	TextureBufferedPtr mWoQueue;
+	// ObjIdQueue: first two ints used as head/tail index
+	TextureBufferedPtr mObjIdQueue;
+
+	ShaderPtr mPrimaryRayShader;
+	ShaderPtr mStreamingShader;
+	ShaderPtr mImageCopyShader;
+	ShaderPtr mImageClearShader;
+
+	StreamedPTParam mParam;
+};
+
 class RasterView :
 	public Integrator
 {
@@ -207,12 +255,12 @@ public:
 	TexturePtr getFrame() { return TexturePtr(nullptr); }
 	float resultScale() const { return 1.0f; }
 
+	void setMatIndex(int index) { mMatIndex = index; }
+
 private:
 	PipelinePtr mCtx;
 	ShaderPtr mShader;
-	Camera mCamera;
-	std::vector<ModelInstancePtr> mObjects;
-	std::vector<std::pair<ModelInstancePtr, glm::vec3>> mLights;
 
 	int mDisplayChannel = 0;
+	int mMatIndex = 0;
 };

@@ -40,7 +40,7 @@ void BVHDisplayIntegrator::updateUniforms(const Scene& scene, int width, int hei
 
 void BVHDisplayIntegrator::init(const Scene& scene, int width, int height, PipelinePtr ctx)
 {
-	mShader = Shader::create("bvh_display.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 });
+	mShader = Shader::createFromText("bvh_display.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 });
 	recreateFrameTex(width, height);
 	updateUniforms(scene, width, height);
 }

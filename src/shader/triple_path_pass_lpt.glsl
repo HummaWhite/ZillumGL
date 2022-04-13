@@ -65,7 +65,7 @@ void traceLightPath(inout Sampler s)
 	vec3 throughput;
 
 	vec3 prevPos;
-	SurfaceInfo prevSurf;
+	vec3 prevNorm;
 	float prevPdfDir;
 
 	float s0t1, s1t1;
@@ -82,7 +82,7 @@ void traceLightPath(inout Sampler s)
 		throughput = leSamp.Le * absDot(nl, -wo) / (pdfSource * leSamp.pdfPos * leSamp.pdfDir);
 
 		prevPos = leSamp.ray.ori;
-		prevSurf.ns = nl;
+		prevNorm = nl;
 		prevPdfDir = leSamp.pdfDir;
 
 		s0t1 = 1.0 / remap(leSamp.pdfPos * pdfSource);
@@ -131,7 +131,7 @@ void traceLightPath(inout Sampler s)
 
 					float coefToSurf = remap(thinLensCameraPdfIe(makeRay(pCam, -ciSamp.wi)).pdfDir * satDot(surf.ns, ciSamp.wi));
 					float coefToPrev = remap(materialPdf(matType, matParam, ciSamp.wi, wo, surf.ns, Radiance) *
-						absDot(prevSurf.ns, wo));
+						absDot(prevNorm, wo));
 					float coefDist = remap(ciSamp.dist * ciSamp.dist);
 
 					float coef0 = coefToSurf * coefToPrev / coefDist;
@@ -166,13 +166,13 @@ void traceLightPath(inout Sampler s)
 		}
 
 		float coefToPrev = remap(materialPdf(matType, matParam, wi, wo, surf.ns, Radiance) *
-			absDot(prevSurf.ns, wo));
+			absDot(prevNorm, wo));
 		s0t1 *= coefToPrev;
 		s1t1 *= (bounce == 1) ? 1.0 : coefToPrev;
 
 		prevPdfDir = materialPdf(matType, matParam, wo, wi, surf.ns, Importance);
 		prevPos = pos;
-		prevSurf = surf;
+		prevNorm = surf.ns;
 
 		float cosWi = deltaBsdf ? 1.0 : abs(dot(surf.ng, wi) * dot(surf.ns, wo) / dot(surf.ng, wo));
 		throughput *= bsdf * cosWi / bsdfPdf;

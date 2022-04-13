@@ -82,7 +82,6 @@ vec3 lightLe(int id, vec3 x, vec3 wo)
 	SurfaceInfo sInfo = triangleSurfaceInfo(triId, x);
 	if (dot(wo, sInfo.ng) <= 0.0)
 		return vec3(0.0);
-
 	return texelFetch(uLightPower, id).rgb / triangleArea(triId) * 0.5f * PiInv;
 }
 

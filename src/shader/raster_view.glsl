@@ -3,9 +3,9 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec2 aUV;
 layout(location = 2) in vec3 aNorm;
 
-out vec3 vPos;
-out vec2 vUV;
-out vec3 vNorm;
+layout(location = 0) out vec3 vPos;
+layout(location = 1) out vec2 vUV;
+layout(location = 2) out vec3 vNorm;
 
 uniform mat4 uMVPMatrix;
 uniform mat4 uModelMat;
@@ -20,16 +20,17 @@ void main()
 }
 
 @type fragment
-in vec3 vPos;
-in vec2 vUV;
-in vec3 vNorm;
+layout(location = 0) in vec3 vPos;
+layout(location = 1) in vec2 vUV;
+layout(location = 2) in vec3 vNorm;
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
 
 uniform sampler2DArray uTextures;
 uniform vec3 uCamPos;
+uniform vec3 uBaseColor;
 uniform int uTexIndex;
-uniform float uTexScale;
+uniform vec2 uTexScale;
 uniform int uChannel;
 
 vec3 calc(vec3 x)
@@ -48,18 +49,19 @@ void main()
 {
 	vec3 result;
 	vec3 wi = normalize(uCamPos - vPos);
-	vec3 baseColor = vec3(1.0);
-	switch (uChannel)
+	if (uChannel == 0)
 	{
-	case 0:
+		vec3 baseColor = (uTexIndex == -1) ? uBaseColor :
+			texture(uTextures, vec3(fract(vUV) * uTexScale, uTexIndex)).rgb;
 		result = baseColor * abs(dot(vNorm, wi));
 		result = filmic(result);
-		break;
-	case 1:
-		result = vPos;
-		break;
-	case 2:
-		result = (vNorm + 1.0) * 0.5;
 	}
+	else if (uChannel == 1)
+		result = vPos;
+	else if (uChannel == 2)
+		result = (vNorm + 1.0) * 0.5;
+	else if (uChannel == 3)
+		result = vec3(fract(vUV) * ((uTexIndex == -1) ? vec2(1.0) : uTexScale), 1.0);
+
 	FragColor = vec4(pow(result, vec3(1.0 / 2.2)), 1.0);
 }
