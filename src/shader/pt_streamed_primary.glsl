@@ -1,11 +1,11 @@
 @type compute
 
-layout(r32f, binding = 0) uniform image2D uFrame;
-
-layout(rgba32f, binding = 2) uniform imageBuffer uPositionQueue;
-layout(rgba32f, binding = 3) uniform imageBuffer uThroughputQueue;
-layout(rgba32f, binding = 4) uniform imageBuffer uWoQueue;
-layout(r32i, binding = 5) uniform iimageBuffer uObjIdQueue;
+layout(rgba32f, binding = 0) uniform image2D uFrame;
+layout(rgba32f, binding = 1) uniform imageBuffer uPositionQueue;
+layout(rgba32f, binding = 2) uniform imageBuffer uThroughputQueue;
+layout(rgba32f, binding = 3) uniform imageBuffer uWoQueue;
+layout(rg32i, binding = 4) uniform iimageBuffer uUVQueue;
+layout(r32i, binding = 5) uniform iimageBuffer uIdQueue;
 
 @include random.glsl
 @include math.glsl
@@ -18,24 +18,26 @@ uniform int uFreeCounter;
 uniform int uSampleDim;
 uniform sampler2D uNoiseTex;
 uniform int uSampleNum;
+uniform int uQueueCapacity;
 
 void accumulateImage(ivec2 iuv, vec3 color)
 {
-	imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 0, iuv.y), color.r);
-	imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 1, iuv.y), color.g);
-	imageAtomicAdd(uFrame, ivec2(iuv.x * 3 + 2, iuv.y), color.b);
+	vec3 last = imageLoad(uFrame, iuv).rgb;
+	imageStore(uFrame, iuv, vec4(last + color, 1.0));
 }
 
-void pushQueue(vec3 pos, vec3 throughput, vec3 wo, int id)
+void pushQueue(vec3 pos, vec3 throughput, vec3 wo, ivec2 uv, int id)
 {
-	int tailPtr = imageAtomicAdd(uObjIdQueue, 1, 1);
+	int tailPtr = imageAtomicAdd(uIdQueue, 1, 1);
+	tailPtr = ((tailPtr % uQueueCapacity) + uQueueCapacity) % uQueueCapacity;
 	imageStore(uPositionQueue, tailPtr, vec4(pos, 0.0));
 	imageStore(uThroughputQueue, tailPtr, vec4(throughput, 0.0));
 	imageStore(uWoQueue, tailPtr, vec4(wo, 1.0));
-	imageStore(uObjIdQueue, tailPtr + 2, ivec4(id, 0.0, 0.0, 0.0));
+	imageStore(uUVQueue, tailPtr, ivec4(uv, 0, 0));
+	imageStore(uIdQueue, tailPtr + 2, ivec4(id, 0, 0, 0));
 }
 
-bool processPrimaryRay(Ray ray, out vec3 result)
+bool processPrimaryRay(Ray ray, ivec2 uv, out vec3 result)
 {
 	float primDist;
 	int id = bvhHit(ray, primDist);
@@ -52,7 +54,7 @@ bool processPrimaryRay(Ray ray, out vec3 result)
 		result = lightLe(id - uObjPrimCount, pos, -ray.dir);
 		return false;
 	}
-	pushQueue(pos, vec3(1.0), wo, id);
+	pushQueue(pos, vec3(1.0), wo, uv, id);
 	return true;
 }
 
@@ -79,7 +81,7 @@ void main()
 	Ray ray = thinLensCameraSampleRay(scrCoord, sample4D(sampleIdx));
 
 	vec3 result;
-	bool surfaceHit = processPrimaryRay(ray, result);
+	bool surfaceHit = processPrimaryRay(ray, coord, result);
 
 	if (!surfaceHit)
 		accumulateImage(coord, result);

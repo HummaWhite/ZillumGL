@@ -163,8 +163,10 @@ public:
 	TextureBuffered(BufferPtr buffer, TextureFormat format);
 
 	int64_t size() const { return mBuffer->size(); }
+	BufferPtr buffer() const { return mBuffer; }
 
 	void write(int64_t offset, int64_t size, const void* data);
+	void read(int64_t offset, int64_t size, void* data);
 
 	static TextureBufferedPtr createFromBuffer(BufferPtr buffer, TextureFormat format);
 

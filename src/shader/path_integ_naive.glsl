@@ -95,11 +95,11 @@ vec3 pathIntegTrace(Ray ray, inout Sampler s)
 		ray = rayOffseted(pos, wi);
 
 		float dist;
-		int primId = bvhHit(ray, dist);
-		int lightId = primId - uObjPrimCount;
+		int nextId = bvhHit(ray, dist);
+		int lightId = nextId - uObjPrimCount;
 		vec3 nextPos = rayPoint(ray, dist);
 
-		if (primId == -1)
+		if (nextId == -1)
 		{
 			vec3 radiance = envLe(wi);
 			float weight = 1.0;
@@ -135,7 +135,7 @@ vec3 pathIntegTrace(Ray ray, inout Sampler s)
 		if (flag == SpecTrans || flag == GlosTrans)
 			etaScale *= square(samp.eta);
 
-		id = primId;
+		id = nextId;
 		pos = nextPos;
 		wo = -wi;
 	}

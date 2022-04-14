@@ -25,6 +25,12 @@ void Buffer::write(int64_t offset, int64_t size, const void* data)
 	glNamedBufferSubData(mId, offset, size, data);
 }
 
+void Buffer::read(int64_t offset, int64_t size, void* data)
+{
+	Error::check(offset + size <= mSize, "[Buffer]\tread size > allocated");
+	glGetNamedBufferSubData(mId, offset, size, data);
+}
+
 BufferPtr Buffer::create(int64_t size, const void* data, BufferUsage usage)
 {
 	return std::make_shared<Buffer>(size, data, usage);

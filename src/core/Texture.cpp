@@ -195,6 +195,12 @@ void TextureBuffered::write(int64_t offset, int64_t size, const void* data)
 	glNamedBufferSubData(mBuffer->id(), offset, size, data);
 }
 
+void TextureBuffered::read(int64_t offset, int64_t size, void* data)
+{
+	Error::check(offset + size <= mBuffer->size(), "[TextureBuffered]\tread size > allocated");
+	glGetNamedBufferSubData(mBuffer->id(), offset, size, data);
+}
+
 TextureBufferedPtr TextureBuffered::createFromBuffer(BufferPtr buffer, TextureFormat format)
 {
 	return std::make_shared<TextureBuffered>(buffer, format);

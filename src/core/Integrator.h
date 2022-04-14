@@ -226,17 +226,14 @@ private:
 
 private:
 	Texture2DPtr mFrameTex;
-	Texture2DPtr mFilmTex;
-
 	TextureBufferedPtr mPositionQueue;
 	TextureBufferedPtr mThroughputQueue;
 	TextureBufferedPtr mWoQueue;
-	// ObjIdQueue: first two ints used as head/tail index
-	TextureBufferedPtr mObjIdQueue;
+	TextureBufferedPtr mUVQueue;
+	TextureBufferedPtr mIdQueue;
 
 	ShaderPtr mPrimaryRayShader;
 	ShaderPtr mStreamingShader;
-	ShaderPtr mImageCopyShader;
 	ShaderPtr mImageClearShader;
 
 	StreamedPTParam mParam;

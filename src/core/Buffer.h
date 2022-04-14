@@ -30,6 +30,21 @@ public:
 
 	void allocate(int64_t size, const void* data, BufferUsage usage = BufferUsage::StaticDraw);
 	void write(int64_t offset, int64_t size, const void* data);
+	void read(int64_t offset, int64_t size, void* data);
+
+	template<typename T>
+	void write(int64_t offset, const T& data)
+	{
+		write(offset, sizeof(T), &data);
+	}
+
+	template<typename T>
+	T read(int64_t offset)
+	{
+		T data;
+		read(offset, sizeof(T), &data);
+		return data;
+	}
 
 	int64_t size() const { return mSize; }
 

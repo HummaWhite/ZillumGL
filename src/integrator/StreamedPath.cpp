@@ -4,26 +4,28 @@ const int PrimaryBlockSizeX = 48;
 const int PrimaryBlockSizeY = 32;
 const int StreamingBlockSize = 1536;
 
+const int ImageOpSizeX = 48;
+const int ImageOpSizeY = 32;
+
 void StreamedPathIntegrator::recreateFrameTex(int width, int height)
 {
 	mFrameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
 	mFrameTex->setFilter(TextureFilter::Nearest);
-	mFilmTex = Texture2D::createEmpty(width * 3, height, TextureFormat::Col1x32f);
-	mFilmTex->setFilter(TextureFilter::Nearest);
 
 	size_t queueSize = width * height;
 
-	mPositionQueue = TextureBuffered::createTyped<glm::vec4>(nullptr, queueSize, TextureFormat::Col4x32f);
-	mThroughputQueue = TextureBuffered::createTyped<glm::vec4>(nullptr, queueSize, TextureFormat::Col4x32f);
-	mWoQueue = TextureBuffered::createTyped<glm::vec4>(nullptr, queueSize, TextureFormat::Col4x32f);
-	mObjIdQueue = TextureBuffered::createTyped<int>(nullptr, queueSize + 2, TextureFormat::Col1x32i);
+	mPositionQueue = TextureBuffered::createTyped<glm::vec4>(nullptr, queueSize + 1, TextureFormat::Col4x32f);
+	mThroughputQueue = TextureBuffered::createTyped<glm::vec4>(nullptr, queueSize + 1, TextureFormat::Col4x32f);
+	mWoQueue = TextureBuffered::createTyped<glm::vec4>(nullptr, queueSize + 1, TextureFormat::Col4x32f);
+	mUVQueue = TextureBuffered::createTyped<glm::ivec2>(nullptr, queueSize + 1, TextureFormat::Col2x32i);
+	mIdQueue = TextureBuffered::createTyped<int>(nullptr, queueSize + 2, TextureFormat::Col1x32i);
 
-	Pipeline::bindTextureToImage(mFilmTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col1x32f);
-	Pipeline::bindTextureToImage(mFrameTex, 1, 0, ImageAccess::WriteOnly, TextureFormat::Col4x32f);
-	Pipeline::bindTextureToImage(mPositionQueue, 2, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
-	Pipeline::bindTextureToImage(mThroughputQueue, 3, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
-	Pipeline::bindTextureToImage(mWoQueue, 4, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
-	Pipeline::bindTextureToImage(mObjIdQueue, 5, 0, ImageAccess::ReadWrite, TextureFormat::Col1x32i);
+	Pipeline::bindTextureToImage(mFrameTex, 0, 0, ImageAccess::WriteOnly, TextureFormat::Col4x32f);
+	Pipeline::bindTextureToImage(mPositionQueue, 1, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
+	Pipeline::bindTextureToImage(mThroughputQueue, 2, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
+	Pipeline::bindTextureToImage(mWoQueue, 3, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
+	Pipeline::bindTextureToImage(mUVQueue, 4, 0, ImageAccess::ReadWrite, TextureFormat::Col2x32i);
+	Pipeline::bindTextureToImage(mIdQueue, 5, 0, ImageAccess::ReadWrite, TextureFormat::Col1x32i);
 }
 
 void StreamedPathIntegrator::updateUniforms(const Scene& scene, int width, int height)
@@ -63,35 +65,37 @@ void StreamedPathIntegrator::updateUniforms(const Scene& scene, int width, int h
 		shader->set1i("uSampleDim", scene.SampleDim);
 		shader->set1i("uSampleNum", scene.SampleNum);
 		shader->set1f("uEnvRotation", scene.envRotation);
-		shader->set1i("uSampler", scene.sampler);
-
-		shader->setVec3("uCamF", camera.front());
-		shader->setVec3("uCamR", camera.right());
-		shader->setVec3("uCamU", camera.up());
-		shader->setMat3("uCamMatInv", glm::inverse(camMatrix));
-		shader->setVec3("uCamPos", camera.pos());
-		shader->set1f("uTanFOV", glm::tan(glm::radians(camera.FOV() * 0.5f)));
-		shader->set1f("uCamAsp", camera.aspect());
-		shader->set1f("uLensRadius", camera.lensRadius());
-		shader->set1f("uFocalDist", camera.focalDist());
-		shader->set2i("uFilmSize", width, height);
-
-		shader->set1i("uRussianRoulette", mParam.russianRoulette);
-		shader->set1i("uMaxDepth", mParam.maxDepth);
-		shader->set1i("uSampleLight", mParam.sampleLight);
 		shader->set1i("uLightEnvUniformSample", mParam.lightEnvUniformSample);
 		shader->set1f("uLightSamplePortion", mParam.lightPortion);
+		shader->set1i("uSampler", scene.sampler);
+		shader->set2i("uFilmSize", width, height);
+
+		shader->set1i("uQueueCapacity", width * height + 1);
 	}
+
+	mPrimaryRayShader->setVec3("uCamF", camera.front());
+	mPrimaryRayShader->setVec3("uCamR", camera.right());
+	mPrimaryRayShader->setVec3("uCamU", camera.up());
+	mPrimaryRayShader->setMat3("uCamMatInv", glm::inverse(camMatrix));
+	mPrimaryRayShader->setVec3("uCamPos", camera.pos());
+	mPrimaryRayShader->set1f("uTanFOV", glm::tan(glm::radians(camera.FOV() * 0.5f)));
+	mPrimaryRayShader->set1f("uCamAsp", camera.aspect());
+	mPrimaryRayShader->set1f("uLensRadius", camera.lensRadius());
+	mPrimaryRayShader->set1f("uFocalDist", camera.focalDist());
+
+	mStreamingShader->set1i("uRussianRoulette", mParam.russianRoulette);
+	mStreamingShader->set1i("uSampleLight", mParam.sampleLight);
+
+	mImageClearShader->set2i("uTexSize", width, height);
 }
 
 void StreamedPathIntegrator::init(const Scene& scene, int width, int height, PipelinePtr ctx)
 {
 	mPrimaryRayShader = Shader::createFromText("pt_streamed_primary.glsl", { PrimaryBlockSizeX, PrimaryBlockSizeY, 1 },
-		"#extension GL_EXT_texture_array : enable\n"
-		"#extension GL_NV_shader_atomic_float : enable\n");
-	mStreamingShader = Shader::createFromText("pt_streamed_streaming.glsl", { PrimaryBlockSizeX, PrimaryBlockSizeY, 1 },
-		"#extension GL_EXT_texture_array : enable\n"
-		"#extension GL_NV_shader_atomic_float : enable\n");
+		"#extension GL_EXT_texture_array : enable\n");
+	mStreamingShader = Shader::createFromText("pt_streamed_streaming.glsl", { StreamingBlockSize, 1, 1 },
+		"#extension GL_EXT_texture_array : enable\n");
+	mImageClearShader = Shader::createFromText("util/img_clear_4x32f.glsl", { ImageOpSizeX, ImageOpSizeY, 1 });
 	recreateFrameTex(width, height);
 	updateUniforms(scene, width, height);
 }
@@ -110,14 +114,13 @@ void StreamedPathIntegrator::renderOnePass()
 		return;
 	}
 
-	uint64_t index = 0;
-	mObjIdQueue->write(0, 8, &index);
-
 	int width = mResetStatus.renderSize.x;
 	int height = mResetStatus.renderSize.y;
 
 	int numX = (width + PrimaryBlockSizeX - 1) / PrimaryBlockSizeX;
 	int numY = (height + PrimaryBlockSizeY - 1) / PrimaryBlockSizeY;
+
+	mIdQueue->buffer()->write<int64_t>(0, 0);
 
 	mPrimaryRayShader->set1i("uSpp", mCurSample);
 	mPrimaryRayShader->set1i("uFreeCounter", mFreeCounter);
@@ -125,15 +128,46 @@ void StreamedPathIntegrator::renderOnePass()
 	Pipeline::dispatchCompute(numX, numY, 1, mPrimaryRayShader);
 	Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
 
+	const int QueueCapacity = width * height + 1;
+	
+	for (int i = 1; i <= mParam.maxDepth; i++)
+	{
+		int headPtr = mIdQueue->buffer()->read<int>(0);
+		int tailPtr = mIdQueue->buffer()->read<int>(4);
+		headPtr = ((headPtr % QueueCapacity) + QueueCapacity) % QueueCapacity;
+		tailPtr = ((tailPtr % QueueCapacity) + QueueCapacity) % QueueCapacity;
+		int queueSize = (tailPtr - headPtr + QueueCapacity) % QueueCapacity;
+
+		//std::cout << headPtr << "\t" << tailPtr << "\t" << queueSize << "\n";
+		if (queueSize == 0)
+			break;
+		
+		int blockNum = (queueSize + StreamingBlockSize - 1) / StreamingBlockSize;
+		mStreamingShader->set1i("uCurDepth", i);
+		mStreamingShader->set1i("uQueueSize", queueSize);
+		Pipeline::dispatchCompute(blockNum, 1, 1, mStreamingShader);
+		Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
+	}
+	//std::cout << "\n";
+
 	mCurSample++;
+	mParam.samplePerPixel += 1.0f;
 }
 
 void StreamedPathIntegrator::reset(const Scene& scene, int width, int height)
 {
 	if (width != mFrameTex->width() && height != mFrameTex->height())
 		recreateFrameTex(width, height);
+	else
+	{
+		int numX = (width + ImageOpSizeX - 1) / ImageOpSizeX;
+		int numY = (height + ImageOpSizeY - 1) / ImageOpSizeY;
+		Pipeline::dispatchCompute(numX, numY, 1, mImageClearShader);
+		Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
+	}
 	updateUniforms(scene, width, height);
 	mCurSample = 0;
+	mParam.samplePerPixel = 1.0f;
 }
 
 void StreamedPathIntegrator::renderSettingsGUI()
