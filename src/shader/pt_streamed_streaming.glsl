@@ -82,7 +82,7 @@ QueueItem fetchQueue()
 	item.throughput = imageLoad(uThroughputQueue, headPtr).rgb;
 	item.wo = imageLoad(uWoQueue, headPtr).xyz;
 	item.uv = imageLoad(uUVQueue, headPtr).xy;
-	item.id = imageLoad(uIdQueue, headPtr).x;
+	item.id = imageLoad(uIdQueue, headPtr + 2).x;
 	return item;
 }
 
@@ -191,7 +191,7 @@ void main()
 
 	vec2 scrCoord = vec2(coord) / texSize;
 
-	Sampler sampleIdx = 2 + SampleNumPerPass * uCurDepth;
+	Sampler sampleIdx = 4 + SampleNumPerPass * uCurDepth;
 
 	vec2 noiseCoord = texture(uNoiseTex, scrCoord).xy;
 	noiseCoord = texture(uNoiseTex, noiseCoord).xy;

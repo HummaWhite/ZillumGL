@@ -76,7 +76,8 @@ void main()
 	sampleSeed = uint(texCoord.x) * uint(texCoord.y);
 
 	sampleOffset = uSpp * uSampleDim;
-	if (sampleOffset > uSampleNum * uSampleDim) sampleOffset -= uSampleNum * uSampleDim;
+	if (sampleOffset > uSampleNum * uSampleDim)
+		sampleOffset -= uSampleNum * uSampleDim;
 
 	Ray ray = thinLensCameraSampleRay(scrCoord, sample4D(sampleIdx));
 

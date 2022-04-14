@@ -128,6 +128,9 @@ void StreamedPathIntegrator::renderOnePass()
 	Pipeline::dispatchCompute(numX, numY, 1, mPrimaryRayShader);
 	Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
 
+	mStreamingShader->set1i("uSpp", mCurSample);
+	mStreamingShader->set1i("uFreeCounter", mFreeCounter);
+
 	const int QueueCapacity = width * height + 1;
 	
 	for (int i = 1; i <= mParam.maxDepth; i++)
