@@ -96,6 +96,7 @@ public:
 	static void memoryBarrier(MemoryBarrierBit bits);
 
 	static void bindTextureToImage(TexturePtr texture, uint32_t unit, int level, ImageAccess access, TextureFormat format);
+	static void clearBindingRecord();
 
 private:
 	static bool canRebindTexture(TexturePtr texture, const TextureBindParam& param);

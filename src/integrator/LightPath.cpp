@@ -14,9 +14,10 @@ void LightPathIntegrator::recreateFrameTex(int width, int height)
 	Pipeline::bindTextureToImage(mFrameTex, 1, 0, ImageAccess::WriteOnly, TextureFormat::Col4x32f);
 }
 
-void LightPathIntegrator::updateUniforms(const Scene& scene, int width, int height)
+void LightPathIntegrator::updateUniforms(const RenderStatus& status)
 {
-	auto& sceneBuffers = scene.glContext;
+	auto [scene, size, level] = status;
+	auto& sceneBuffers = scene->glContext;
 	mShader->setTexture("uVertices", sceneBuffers.vertex, 2);
 	mShader->setTexture("uNormals", sceneBuffers.normal, 3);
 	mShader->setTexture("uTexCoords", sceneBuffers.texCoord, 4);
@@ -24,9 +25,9 @@ void LightPathIntegrator::updateUniforms(const Scene& scene, int width, int heig
 	mShader->setTexture("uBounds", sceneBuffers.bound, 6);
 	mShader->setTexture("uHitTable", sceneBuffers.hitTable, 7);
 	mShader->setTexture("uMatTexIndices", sceneBuffers.matTexIndex, 8);
-	mShader->setTexture("uEnvMap", scene.envMap->envMap(), 9);
-	mShader->setTexture("uEnvAliasTable", scene.envMap->aliasTable(), 10);
-	mShader->setTexture("uEnvAliasProb", scene.envMap->aliasProb(), 11);
+	mShader->setTexture("uEnvMap", scene->envMap->envMap(), 9);
+	mShader->setTexture("uEnvAliasTable", scene->envMap->aliasTable(), 10);
+	mShader->setTexture("uEnvAliasProb", scene->envMap->aliasProb(), 11);
 	mShader->setTexture("uMaterials", sceneBuffers.material, 12);
 	mShader->setTexture("uMatTypes", sceneBuffers.material, 12);
 	mShader->setTexture("uLightPower", sceneBuffers.lightPower, 13);
@@ -34,20 +35,20 @@ void LightPathIntegrator::updateUniforms(const Scene& scene, int width, int heig
 	mShader->setTexture("uLightProb", sceneBuffers.lightProb, 15);
 	mShader->setTexture("uTextures", sceneBuffers.textures, 16);
 	mShader->setTexture("uTexUVScale", sceneBuffers.texUVScale, 17);
-	mShader->setTexture("uSobolSeq", scene.sobolTex, 18);
-	mShader->setTexture("uNoiseTex", scene.noiseTex, 19);
-	mShader->set1i("uNumLightTriangles", scene.nLightTriangles);
-	mShader->set1f("uLightSum", scene.lightSumPdf);
-	mShader->set1f("uEnvSum", scene.envMap->sumPdf());
-	mShader->set1i("uObjPrimCount", scene.objPrimCount);
-	mShader->set1i("uBvhSize", scene.boxCount);
-	mShader->set1i("uSampleDim", scene.SampleDim);
-	mShader->set1i("uSampleNum", scene.SampleNum);
-	mShader->set1f("uEnvRotation", scene.envRotation);
-	//mShader->set1i("uSampler", scene.sampler);
+	mShader->setTexture("uSobolSeq", scene->sobolTex, 18);
+	mShader->setTexture("uNoiseTex", scene->noiseTex, 19);
+	mShader->set1i("uNumLightTriangles", scene->nLightTriangles);
+	mShader->set1f("uLightSum", scene->lightSumPdf);
+	mShader->set1f("uEnvSum", scene->envMap->sumPdf());
+	mShader->set1i("uObjPrimCount", scene->objPrimCount);
+	mShader->set1i("uBvhSize", scene->boxCount);
+	mShader->set1i("uSampleDim", scene->SampleDim);
+	mShader->set1i("uSampleNum", scene->SampleNum);
+	mShader->set1f("uEnvRotation", scene->envRotation);
+	//mShader->set1i("uSampler", scene->sampler);
 	mShader->set1i("uSampler", 0);
 
-	const auto& camera = scene.camera;
+	const auto& camera = scene->camera;
 	mShader->setVec3("uCamF", camera.front());
 	mShader->setVec3("uCamR", camera.right());
 	mShader->setVec3("uCamU", camera.up());
@@ -58,17 +59,17 @@ void LightPathIntegrator::updateUniforms(const Scene& scene, int width, int heig
 	mShader->set1f("uCamAsp", camera.aspect());
 	mShader->set1f("uLensRadius", camera.lensRadius());
 	mShader->set1f("uFocalDist", camera.focalDist());
-	mShader->set2i("uFilmSize", width, height);
+	mShader->setVec2i("uFilmSize", size);
 
 	mShader->set1i("uRussianRoulette", mParam.russianRoulette);
 	mShader->set1i("uMaxDepth", mParam.maxDepth);
 	mShader->set1i("uBlocksOnePass", mParam.threadBlocksOnePass);
 
-	mImageCopyShader->set2i("uTexSize", width, height);
-	mImageClearShader->set2i("uTexSize", width, height);
+	mImageCopyShader->setVec2i("uTexSize", size);
+	mImageClearShader->setVec2i("uTexSize", size);
 }
 
-void LightPathIntegrator::init(const Scene& scene, int width, int height, PipelinePtr ctx)
+void LightPathIntegrator::init(Scene* scene, int width, int height, PipelinePtr ctx)
 {
 	mShader = Shader::createFromText("light_path_integ.glsl", { WorkgroupSize, 1, 1 },
 		"#extension GL_EXT_texture_array : enable\n"
@@ -76,18 +77,18 @@ void LightPathIntegrator::init(const Scene& scene, int width, int height, Pipeli
 	mImageCopyShader = Shader::createFromText("util/img_copy_1x32f_4x32f.glsl", { ImageOpSizeX, ImageOpSizeY, 1 });
 	mImageClearShader = Shader::createFromText("util/img_clear_1x32f.glsl", { ImageOpSizeX, ImageOpSizeY, 1 });
 	recreateFrameTex(width, height);
-	updateUniforms(scene, width, height);
+	updateUniforms({ scene, { width, height } });
 }
 
 void LightPathIntegrator::renderOnePass()
 {
 	mFreeCounter++;
-	int width = mResetStatus.renderSize.x;
-	int height = mResetStatus.renderSize.y;
+	int width = mStatus.renderSize.x;
+	int height = mStatus.renderSize.y;
 
 	if (mShouldReset)
 	{
-		reset(*mResetStatus.scene, width, height);
+		reset(mStatus);
 		mShouldReset = false;
 	}
 	if (mParam.finiteSample && static_cast<float>(mParam.samplePerPixel) > mParam.maxSample)
@@ -96,11 +97,13 @@ void LightPathIntegrator::renderOnePass()
 		return;
 	}
 
+	mTime = getTime();
 	mShader->set1i("uSpp", mCurSample);
 	mShader->set1i("uFreeCounter", mFreeCounter);
-
+	
 	Pipeline::dispatchCompute(mParam.threadBlocksOnePass, 1, 1, mShader);
 	Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
+	mTime = getTime() - mTime;
 
 	int numX = (width + ImageOpSizeX - 1) / ImageOpSizeX;
 	int numY = (height + ImageOpSizeY - 1) / ImageOpSizeY;
@@ -112,8 +115,10 @@ void LightPathIntegrator::renderOnePass()
 	mCurSample++;
 }
 
-void LightPathIntegrator::reset(const Scene& scene, int width, int height)
+void LightPathIntegrator::reset(const RenderStatus& status)
 {
+	int width = status.renderSize.x;
+	int height = status.renderSize.y;
 	if (width != mFrameTex->width() && height != mFrameTex->height())
 		recreateFrameTex(width, height);
 	else
@@ -123,7 +128,7 @@ void LightPathIntegrator::reset(const Scene& scene, int width, int height)
 		Pipeline::dispatchCompute(numX, numY, 1, mImageClearShader);
 		Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
 	}
-	updateUniforms(scene, width, height);
+	updateUniforms(status);
 	mCurSample = 0;
 	mParam.samplePerPixel = static_cast<float>(mParam.threadBlocksOnePass) * WorkgroupSize /
 		(width * height);
@@ -161,4 +166,5 @@ void LightPathIntegrator::renderProgressGUI()
 		ImGui::ProgressBar(mParam.samplePerPixel / mParam.maxSample);
 	else
 		ImGui::Text("Spp: %f", mParam.samplePerPixel);
+	//ImGui::Text("%lf", mTime / (WorkgroupSize * mParam.threadBlocksOnePass));
 }

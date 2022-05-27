@@ -1,5 +1,6 @@
 #include "BVH.h"
 #include "../util/Error.h"
+#include "../util/Timer.h"
 
 struct BoxRec
 {
@@ -132,8 +133,10 @@ PackedBVH BVH::build()
 		rootBox.expand(hInfo.bound);
 		primInfo[i] = hInfo;
 	}
-	//standardBuild(rootBox);
+	Timer timer;
+	//standardBuild(rootCentExtent);
 	quickBuild(rootCentExtent);
+	std::cout << timer.get() * 1e-9 << "\n";
 	std::cout << "\t[" << vertices.size() << " vertices, " << primInfo.size() << " triangles, " << bounds.size() << " nodes]\n";
 
 	buildHitTable();

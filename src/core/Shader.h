@@ -100,6 +100,7 @@ public:
 	void set4f(const std::string& name, float v0, float v1, float v2, float v3);
 
 	void setVec2(const std::string& name, const glm::vec2& vec);
+	void setVec2i(const std::string& name, const glm::ivec2& vec);
 	void setVec3(const std::string& name, const glm::vec3& vec);
 	void setVec4(const std::string& name, const glm::vec4& vec);
 	void setMat3(const std::string& name, const glm::mat3& mat);
@@ -111,6 +112,8 @@ public:
 	static int getUniformLocation(GLuint programID, const std::string& name);
 
 	std::string name() const { return mName; }
+
+	void clearUniformRecord() { mUniformRec.clear(); }
 
 	static ShaderPtr createFromText(const File::path& path, const glm::ivec3& computeSize = glm::ivec3(1),
 		const std::string& extensionStr = "");

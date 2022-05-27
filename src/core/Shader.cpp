@@ -103,6 +103,12 @@ void Shader::setVec2(const std::string& name, const glm::vec2& vec)
 		glProgramUniform2f(mId, getUniformLocation(name), vec.x, vec.y);
 }
 
+void Shader::setVec2i(const std::string& name, const glm::ivec2& vec)
+{
+	if (canAssignUniform(name, vec))
+		glProgramUniform2i(mId, getUniformLocation(name), vec.x, vec.y);
+}
+
 void Shader::setVec3(const std::string& name, const glm::vec3& vec)
 {
 	if (canAssignUniform(name, vec))

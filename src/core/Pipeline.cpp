@@ -93,6 +93,11 @@ void Pipeline::bindTextureToImage(TexturePtr texture, uint32_t unit, int level, 
 		glBindImageTexture(unit, texture->id(), level, false, 0, static_cast<GLenum>(access), static_cast<GLenum>(format));
 }
 
+void Pipeline::clearBindingRecord()
+{
+	mImageBindRec.clear();
+}
+
 bool Pipeline::canRebindTexture(TexturePtr texture, const TextureBindParam& param)
 {
 	auto itr = mImageBindRec.find(texture);

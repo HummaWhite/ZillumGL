@@ -120,6 +120,7 @@ public:
 
 	int width() const { return mWidth; }
 	int height() const { return mHeight; }
+	glm::ivec2 size() const { return { mWidth, mHeight }; }
 
 	ImagePtr readFromDevice();
 
@@ -171,16 +172,16 @@ public:
 	static TextureBufferedPtr createFromBuffer(BufferPtr buffer, TextureFormat format);
 
 	template<typename T>
-	static TextureBufferedPtr createFromVector(const std::vector<T>& data, TextureFormat format)
+	static TextureBufferedPtr createFromVector(const std::vector<T>& data, TextureFormat format, BufferUsage usage = BufferUsage::StaticDraw)
 	{
-		auto buffer = Buffer::create(data.size() * sizeof(T), data.data(), BufferUsage::StaticDraw);
+		auto buffer = Buffer::create(data.size() * sizeof(T), data.data(), usage);
 		return createFromBuffer(buffer, format);
 	}
 
 	template<typename T>
-	static TextureBufferedPtr createTyped(const void* data, size_t count, TextureFormat format)
+	static TextureBufferedPtr createTyped(const void* data, size_t count, TextureFormat format, BufferUsage usage = BufferUsage::StaticDraw)
 	{
-		auto buffer = Buffer::create(count * sizeof(T), data, BufferUsage::StaticDraw);
+		auto buffer = Buffer::create(count * sizeof(T), data, usage);
 		return createFromBuffer(buffer, format);
 	}
 

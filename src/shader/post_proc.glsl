@@ -1,23 +1,13 @@
-@type vertex
+@type compute
 
-layout(location = 0) in vec2 aTexCoord;
-out vec2 texCoord;
+layout(rgba32f, binding = 6) uniform writeonly image2D uOut;
 
-void main()
-{
-	texCoord = aTexCoord;
-	vec2 transTex = aTexCoord * 2.0 - 1.0;
-	gl_Position = vec4(transTex, 0.0, 1.0);
-}
-
-@type fragment
-
-in vec2 texCoord;
-out vec4 FragColor;
-
-uniform sampler2D uFrame;
+uniform sampler2D uIn;
 uniform int uToneMapper;
 uniform float uResultScale;
+uniform ivec2 uFilmSize;
+uniform bool uPreview;
+uniform int uPreviewScale;
 
 vec3 reinhard(vec3 color)
 {
@@ -48,25 +38,23 @@ vec3 ACES(vec3 color)
 
 void main()
 {
-	vec2 uv = texCoord;
-	vec3 color = texture(uFrame, uv).rgb * uResultScale;
-	
+	ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+	if (coord.x >= uFilmSize.x || coord.y >= uFilmSize.y)
+		return;
+	vec3 color = texelFetch(uIn, coord / (uPreview ? uPreviewScale : 1), 0).rgb * uResultScale;
+
 	color = clamp(color, 0.0, 1e30);
 
 	vec3 mapped = color;
 	switch (uToneMapper)
 	{
 	case 1:
-		mapped = reinhard(color);
-		break;
-	case 2:
 		mapped = filmic(color);
 		break;
-	case 3:
+	case 2:
 		mapped = ACES(color);
 		break;
 	}
-
 	mapped = pow(mapped, vec3(1.0 / 2.2));
-	FragColor = vec4(mapped, 1.0);
+	imageStore(uOut, coord, vec4(mapped, 1.0));
 }

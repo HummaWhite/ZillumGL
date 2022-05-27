@@ -60,7 +60,7 @@ private:
 	glm::vec3 mUp = glm::vec3(0.0f, 0.0f, 1.0f);
 	float mFOV = 45.0f;
 	float mNear = 0.1f;
-	float mFar = 100.0f;
+	float mFar = 1000.0f;
 	float mAspect = 1.0f;
 	float mLensRadius = 0.0f;
 	float mFocalDist = 1.0f;

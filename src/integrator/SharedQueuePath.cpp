@@ -1,80 +1,88 @@
 #include "../core/Integrator.h"
 
-const int WorkgroupSizeX = 48;
-const int WorkgroupSizeY = 32;
+const int PrimaryBlockSizeX = 8;
+const int PrimaryBlockSizeY = 4;
 
-void NaivePathIntegrator::recreateFrameTex(int width, int height)
+const int ImageOpSizeX = 48;
+const int ImageOpSizeY = 32;
+
+void SharedQueuePathIntegrator::recreateFrameTex(int width, int height)
 {
 	mFrameTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
 	mFrameTex->setFilter(TextureFilter::Nearest);
+	size_t queueSize = static_cast<size_t>(width) * height;
+
+	Pipeline::bindTextureToImage(mFrameTex, 0, 0, ImageAccess::WriteOnly, TextureFormat::Col4x32f);
 }
 
-void NaivePathIntegrator::updateUniforms(const RenderStatus& status)
+void SharedQueuePathIntegrator::updateUniforms(const RenderStatus& status)
 {
 	auto [scene, size, level] = status;
-	if (level == ResetLevel::FullReset)
-		mShader->clearUniformRecord();
 
 	auto& sceneBuffers = scene->glContext;
-	Pipeline::bindTextureToImage(mFrameTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
-	mShader->setTexture("uVertices", sceneBuffers.vertex, 1);
-	mShader->setTexture("uNormals", sceneBuffers.normal, 2);
-	mShader->setTexture("uTexCoords", sceneBuffers.texCoord, 3);
-	mShader->setTexture("uIndices", sceneBuffers.index, 4);
-	mShader->setTexture("uBounds", sceneBuffers.bound, 5);
-	mShader->setTexture("uHitTable", sceneBuffers.hitTable, 6);
-	mShader->setTexture("uMatTexIndices", sceneBuffers.matTexIndex, 7);
-	mShader->setTexture("uEnvMap", scene->envMap->envMap(), 8);
-	mShader->setTexture("uEnvAliasTable", scene->envMap->aliasTable(), 9);
-	mShader->setTexture("uEnvAliasProb", scene->envMap->aliasProb(), 10);
-	mShader->setTexture("uMaterials", sceneBuffers.material, 11);
-	mShader->setTexture("uMatTypes", sceneBuffers.material, 11);
-	mShader->setTexture("uLightPower", sceneBuffers.lightPower, 12);
-	mShader->setTexture("uLightAlias", sceneBuffers.lightAlias, 13);
-	mShader->setTexture("uLightProb", sceneBuffers.lightProb, 14);
-	mShader->setTexture("uTextures", sceneBuffers.textures, 15);
-	mShader->setTexture("uTexUVScale", sceneBuffers.texUVScale, 16);
-	mShader->setTexture("uSobolSeq", scene->sobolTex, 17);
-	mShader->setTexture("uNoiseTex", scene->noiseTex, 18);
+	const auto& camera = scene->camera;
+	glm::mat3 camMatrix(camera.right(), camera.up(), camera.front());
+
+	mShader->setTexture("uVertices", sceneBuffers.vertex, 6);
+	mShader->setTexture("uNormals", sceneBuffers.normal, 7);
+	mShader->setTexture("uTexCoords", sceneBuffers.texCoord, 8);
+	mShader->setTexture("uIndices", sceneBuffers.index, 9);
+	mShader->setTexture("uBounds", sceneBuffers.bound, 10);
+	mShader->setTexture("uHitTable", sceneBuffers.hitTable, 11);
+	mShader->setTexture("uMatTexIndices", sceneBuffers.matTexIndex, 12);
+	mShader->setTexture("uEnvMap", scene->envMap->envMap(), 13);
+	mShader->setTexture("uEnvAliasTable", scene->envMap->aliasTable(), 14);
+	mShader->setTexture("uEnvAliasProb", scene->envMap->aliasProb(), 15);
+	mShader->setTexture("uMaterials", sceneBuffers.material, 16);
+	mShader->setTexture("uMatTypes", sceneBuffers.material, 16);
+	mShader->setTexture("uLightPower", sceneBuffers.lightPower, 17);
+	mShader->setTexture("uLightAlias", sceneBuffers.lightAlias, 18);
+	mShader->setTexture("uLightProb", sceneBuffers.lightProb, 19);
+	mShader->setTexture("uTextures", sceneBuffers.textures, 20);
+	mShader->setTexture("uTexUVScale", sceneBuffers.texUVScale, 21);
+	mShader->setTexture("uSobolSeq", scene->sobolTex, 22);
+	mShader->setTexture("uNoiseTex", scene->noiseTex, 23);
 	mShader->set1i("uNumLightTriangles", scene->nLightTriangles);
+	mShader->set1i("uObjPrimCount", scene->objPrimCount);
+
 	mShader->set1f("uLightSum", scene->lightSumPdf);
 	mShader->set1f("uEnvSum", scene->envMap->sumPdf());
-	mShader->set1i("uObjPrimCount", scene->objPrimCount);
 	mShader->set1i("uBvhSize", scene->boxCount);
 	mShader->set1i("uSampleDim", scene->SampleDim);
 	mShader->set1i("uSampleNum", scene->SampleNum);
 	mShader->set1f("uEnvRotation", scene->envRotation);
+	mShader->set1i("uLightEnvUniformSample", mParam.lightEnvUniformSample);
+	mShader->set1f("uLightSamplePortion", mParam.lightPortion);
 	mShader->set1i("uSampler", scene->sampler);
+	mShader->setVec2i("uFilmSize", size);
+	mShader->set1i("uMaxDepth", mParam.maxDepth);
 
-	const auto& camera = scene->camera;
 	mShader->setVec3("uCamF", camera.front());
 	mShader->setVec3("uCamR", camera.right());
 	mShader->setVec3("uCamU", camera.up());
-	glm::mat3 camMatrix(camera.right(), camera.up(), camera.front());
 	mShader->setMat3("uCamMatInv", glm::inverse(camMatrix));
 	mShader->setVec3("uCamPos", camera.pos());
 	mShader->set1f("uTanFOV", glm::tan(glm::radians(camera.FOV() * 0.5f)));
 	mShader->set1f("uCamAsp", camera.aspect());
 	mShader->set1f("uLensRadius", camera.lensRadius());
 	mShader->set1f("uFocalDist", camera.focalDist());
-	mShader->setVec2i("uFilmSize", size);
 
 	mShader->set1i("uRussianRoulette", mParam.russianRoulette);
-	mShader->set1i("uMaxDepth", mParam.maxDepth);
 	mShader->set1i("uSampleLight", mParam.sampleLight);
-	mShader->set1i("uLightEnvUniformSample", mParam.lightEnvUniformSample);
-	mShader->set1f("uLightSamplePortion", mParam.lightPortion);
+
+	mImageClearShader->setVec2i("uTexSize", size);
 }
 
-void NaivePathIntegrator::init(Scene* scene, int width, int height, PipelinePtr ctx)
+void SharedQueuePathIntegrator::init(Scene* scene, int width, int height, PipelinePtr ctx)
 {
-	mShader = Shader::createFromText("path_integ_naive.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 },
+	mShader = Shader::createFromText("pt_shared_queue.glsl", { PrimaryBlockSizeX, PrimaryBlockSizeY, 1 },
 		"#extension GL_EXT_texture_array : enable\n");
+	mImageClearShader = Shader::createFromText("util/img_clear_4x32f.glsl", { ImageOpSizeX, ImageOpSizeY, 1 });
 	recreateFrameTex(width, height);
 	updateUniforms({ scene, { width, height } });
 }
 
-void NaivePathIntegrator::renderOnePass()
+void SharedQueuePathIntegrator::renderOnePass()
 {
 	mFreeCounter++;
 	if (mShouldReset)
@@ -88,36 +96,43 @@ void NaivePathIntegrator::renderOnePass()
 		return;
 	}
 
-	mTime = getTime();
 	int width = mStatus.renderSize.x;
 	int height = mStatus.renderSize.y;
-	int numX = (width + WorkgroupSizeX - 1) / WorkgroupSizeX;
-	int numY = (height + WorkgroupSizeY - 1) / WorkgroupSizeY;
+
+	int numX = (width + PrimaryBlockSizeX - 1) / PrimaryBlockSizeX;
+	int numY = (height + PrimaryBlockSizeY - 1) / PrimaryBlockSizeY;
 
 	mShader->set1i("uSpp", mCurSample);
 	mShader->set1i("uFreeCounter", mFreeCounter);
 
 	Pipeline::dispatchCompute(numX, numY, 1, mShader);
 	Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
-	mTime = getTime() - mTime;
 
 	mCurSample++;
+	mParam.samplePerPixel += 1.0f;
 }
 
-void NaivePathIntegrator::reset(const RenderStatus& status)
+void SharedQueuePathIntegrator::reset(const RenderStatus& status)
 {
 	int width = status.renderSize.x;
 	int height = status.renderSize.y;
-	if (mFrameTex->size() != status.renderSize || status.resetLevel == ResetLevel::FullReset)
+	if (mFrameTex->size() != status.renderSize)
 		recreateFrameTex(width, height);
+	else
+	{
+		int numX = (width + ImageOpSizeX - 1) / ImageOpSizeX;
+		int numY = (height + ImageOpSizeY - 1) / ImageOpSizeY;
+		Pipeline::dispatchCompute(numX, numY, 1, mImageClearShader);
+		Pipeline::memoryBarrier(MemoryBarrierBit::ShaderImageAccess);
+	}
 	updateUniforms(status);
 	mCurSample = 0;
+	mParam.samplePerPixel = 1.0f;
 }
 
-void NaivePathIntegrator::renderSettingsGUI()
+void SharedQueuePathIntegrator::renderSettingsGUI()
 {
 	ImGui::SetNextItemWidth(80.0f);
-
 	if (ImGui::InputInt("Max depth", &mParam.maxDepth, 1, 1))
 		setShouldReset();
 
@@ -156,11 +171,10 @@ void NaivePathIntegrator::renderSettingsGUI()
 	}
 }
 
-void NaivePathIntegrator::renderProgressGUI()
+void SharedQueuePathIntegrator::renderProgressGUI()
 {
 	if (mParam.finiteSample)
 		ImGui::ProgressBar(static_cast<float>(mCurSample) / mParam.maxSample);
 	else
 		ImGui::Text("Spp: %d", mCurSample);
-	//ImGui::Text("%lf", mTime / (mResetStatus.renderSize.x * mResetStatus.renderSize.y));
 }

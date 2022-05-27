@@ -3,35 +3,40 @@
 #include <iostream>
 #include <memory>
 
-#include <imgui/imgui.h>
-#include <imgui/imgui_impl_glfw.h>
-#include <imgui/imgui_impl_opengl3.h>
-
 #include "Texture.h"
 #include "Pipeline.h"
 #include "Shader.h"
 #include "Scene.h"
+#include "../util/Timer.h"
+#include "../thirdparty/imgui.hpp"
+
+enum class ResetLevel
+{
+	ResetFrame, ResetUniform, FullReset
+};
+
+struct RenderStatus
+{
+	Scene* scene = nullptr;
+	glm::ivec2 renderSize;
+	ResetLevel resetLevel;
+};
 
 class Integrator
 {
 public:
-	struct ResetStatus
-	{
-		Scene* scene = nullptr;
-		glm::ivec2 renderSize;
-	};
-
-public:
-	virtual void init(const Scene& scene, int width, int height, PipelinePtr ctx) = 0;
+	virtual void init(Scene* scene, int width, int height, PipelinePtr ctx) = 0;
 	virtual void renderOnePass() = 0;
-	virtual void reset(const Scene& scene, int width, int height) = 0;
+	virtual void reset(const RenderStatus& status) = 0;
 	virtual void renderSettingsGUI() = 0;
 	virtual void renderProgressGUI() = 0;
 
-	virtual TexturePtr getFrame() = 0;
+	virtual Texture2DPtr getFrame() = 0;
 	virtual float resultScale() const = 0;
 
-	void setResetStatus(const ResetStatus& status) { mResetStatus = status; }
+	virtual void recreateFrameTex(int width, int height) {}
+
+	void setStatus(const RenderStatus& status) { mStatus = status; }
 	void setShouldReset() { mShouldReset = true; }
 
 protected:
@@ -39,8 +44,11 @@ protected:
 	bool mPassFinished = false;
 	int mCurSample = 0;
 	int mFreeCounter = 0;
-	ResetStatus mResetStatus;
+	RenderStatus mStatus;
 	bool mShouldReset = false;
+
+	double mTime;
+	Timer mTimer;
 };
 
 using IntegratorPtr = std::shared_ptr<Integrator>;
@@ -54,24 +62,25 @@ struct PathIntegParam
 	float lightPortion = 0.5f;
 	bool finiteSample = false;
 	int maxSample = 64;
+	int sampler = 1;
 };
 
 class NaivePathIntegrator :
 	public Integrator
 {
 public:
-	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
+	void init(Scene* scene, int width, int height, PipelinePtr ctx);
 	void renderOnePass();
-	void reset(const Scene& scene, int width, int height);
+	void reset(const RenderStatus& status);
 	void renderSettingsGUI();
 	void renderProgressGUI();
 
-	TexturePtr getFrame() { return mFrameTex; }
+	Texture2DPtr getFrame() { return mFrameTex; }
 	float resultScale() const { return 1.0f / (mCurSample + 1); }
+	void recreateFrameTex(int width, int height);
 
 private:
-	void recreateFrameTex(int width, int height);
-	void updateUniforms(const Scene& scene, int width, int height);
+	void updateUniforms(const RenderStatus& status);
 
 public:
 	PathIntegParam mParam;
@@ -95,18 +104,18 @@ class LightPathIntegrator :
 	public Integrator
 {
 public:
-	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
+	void init(Scene* scene, int width, int height, PipelinePtr ctx);
 	void renderOnePass();
-	void reset(const Scene& scene, int width, int height);
+	void reset(const RenderStatus& status);
 	void renderSettingsGUI();
 	void renderProgressGUI();
 
-	TexturePtr getFrame() { return mFrameTex; }
+	Texture2DPtr getFrame() { return mFrameTex; }
 	float resultScale() const { return 1.0f / mParam.samplePerPixel; }
+	void recreateFrameTex(int width, int height);
 
 private:
-	void recreateFrameTex(int width, int height);
-	void updateUniforms(const Scene& scene, int width, int height);
+	void updateUniforms(const RenderStatus& status);
 
 public:
 	LightPathIntegParam mParam;
@@ -123,29 +132,32 @@ struct TriplePathIntegParam
 {
 	int maxDepth = 4;
 	bool russianRoulette = false;
-	int LPTBlocksOnePass = 32;
-	int LPTLoopsPerPass = 4;
+	int LPTBlocksOnePass = 64;
+	int LPTLoopsPerPass = 1;
 	bool finiteSample = false;
 	int maxSample = 64;
 	float samplePerPixel = 0.0f;
+	int PTSampler = 1;
+	bool limitTime = true;
+	double maxTime = 30.0;
 };
 
 class TriplePathIntegrator :
 	public Integrator
 {
 public:
-	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
+	void init(Scene* scene, int width, int height, PipelinePtr ctx);
 	void renderOnePass();
-	void reset(const Scene& scene, int width, int height);
+	void reset(const RenderStatus& status);
 	void renderSettingsGUI();
 	void renderProgressGUI();
 
-	TexturePtr getFrame() { return mFrameTex; }
+	Texture2DPtr getFrame() { return mFrameTex; }
 	float resultScale() const { return 1.0f / mParam.samplePerPixel; }
+	void recreateFrameTex(int width, int height);
 
 private:
-	void recreateFrameTex(int width, int height);
-	void updateUniforms(const Scene& scene, int width, int height);
+	void updateUniforms(const RenderStatus& status);
 
 public:
 	TriplePathIntegParam mParam;
@@ -173,28 +185,30 @@ class BVHDisplayIntegrator :
 	public Integrator
 {
 public:
-	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
+	void init(Scene* scene, int width, int height, PipelinePtr ctx);
 	void renderOnePass();
-	void reset(const Scene& scene, int width, int height);
-	void renderSettingsGUI() {}
+	void reset(const RenderStatus& status);
+	void renderSettingsGUI();
 	void renderProgressGUI();
 
-	TexturePtr getFrame() { return mFrameTex; }
+	Texture2DPtr getFrame() { return mFrameTex; }
 	float resultScale() const { return 1.0f; }
+	void recreateFrameTex(int width, int height);
 
 	void setMatIndex(int index) { mMatIndex = index; }
 
 private:
-	void recreateFrameTex(int width, int height);
-	void updateUniforms(const Scene& scene, int width, int height);
+	void updateUniforms(const RenderStatus& status);
 
 private:
 	Texture2DPtr mFrameTex;
 	ShaderPtr mShader;
 	int mMatIndex = 0;
+	int mDepthCmp = 10;
+	bool mCheckDepth = false;
 };
 
-struct StreamedPTParam
+struct QueuedPTParam
 {
 	int maxDepth = 4;
 	bool russianRoulette = false;
@@ -203,61 +217,122 @@ struct StreamedPTParam
 	float lightPortion = 0.5f;
 	bool finiteSample = false;
 	int maxSample = 64;
-	int samplePerLaunch = 1536 * 32;
 	float samplePerPixel = 0.0f;
+	int sampler = 1;
 };
 
-class StreamedPathIntegrator :
+class GlobalQueuePathIntegrator :
 	public Integrator
 {
 public:
-	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
+	void init(Scene* scene, int width, int height, PipelinePtr ctx);
 	void renderOnePass();
-	void reset(const Scene& scene, int width, int height);
+	void reset(const RenderStatus& status);
 	void renderSettingsGUI();
 	void renderProgressGUI();
 
-	TexturePtr getFrame() { return mFrameTex; }
+	Texture2DPtr getFrame() { return mFrameTex; }
 	float resultScale() const { return 1.0f / mParam.samplePerPixel; }
+	void recreateFrameTex(int width, int height);
 
 private:
-	void recreateFrameTex(int width, int height);
-	void updateUniforms(const Scene& scene, int width, int height);
+	void updateUniforms(const RenderStatus& status);
 
 private:
 	Texture2DPtr mFrameTex;
-	TextureBufferedPtr mPositionQueue;
-	TextureBufferedPtr mThroughputQueue;
-	TextureBufferedPtr mWoQueue;
-	TextureBufferedPtr mUVQueue;
+	
+	TextureBufferedPtr mPosWoxQueue;
+	TextureBufferedPtr mTputWoyQueue;
+	TextureBufferedPtr mUVWozQueue;
 	TextureBufferedPtr mIdQueue;
 
 	ShaderPtr mPrimaryRayShader;
 	ShaderPtr mStreamingShader;
 	ShaderPtr mImageClearShader;
 
-	StreamedPTParam mParam;
+	QueuedPTParam mParam;
+};
+
+class BlockQueuePathIntegrator :
+	public Integrator
+{
+public:
+	void init(Scene* scene, int width, int height, PipelinePtr ctx);
+	void renderOnePass();
+	void reset(const RenderStatus& status);
+	void renderSettingsGUI();
+	void renderProgressGUI();
+
+	Texture2DPtr getFrame() { return mFrameTex; }
+	float resultScale() const { return 1.0f / mParam.samplePerPixel; }
+	void recreateFrameTex(int width, int height);
+
+private:
+	void updateUniforms(const RenderStatus& status);
+
+private:
+	Texture2DPtr mFrameTex;
+
+	TextureBufferedPtr mPosWoxQueue;
+	TextureBufferedPtr mTputWoyQueue;
+	TextureBufferedPtr mUVWozQueue;
+	TextureBufferedPtr mIdQueue;
+
+	ShaderPtr mShader;
+	ShaderPtr mImageClearShader;
+
+	QueuedPTParam mParam;
+};
+
+class SharedQueuePathIntegrator :
+	public Integrator
+{
+public:
+	void init(Scene* scene, int width, int height, PipelinePtr ctx);
+	void renderOnePass();
+	void reset(const RenderStatus& status);
+	void renderSettingsGUI();
+	void renderProgressGUI();
+
+	Texture2DPtr getFrame() { return mFrameTex; }
+	float resultScale() const { return 1.0f / mParam.samplePerPixel; }
+	void recreateFrameTex(int width, int height);
+
+private:
+	void updateUniforms(const RenderStatus& status);
+
+private:
+	Texture2DPtr mFrameTex;
+
+	ShaderPtr mShader;
+	ShaderPtr mImageClearShader;
+
+	QueuedPTParam mParam;
 };
 
 class RasterView :
 	public Integrator
 {
 public:
-	void init(const Scene& scene, int width, int height, PipelinePtr ctx);
+	void init(Scene* scene, int width, int height, PipelinePtr ctx);
 	void renderOnePass();
-	void reset(const Scene& scene, int width, int height);
+	void reset(const RenderStatus& status);
 	void renderSettingsGUI();
 	void renderProgressGUI() {}
 
-	TexturePtr getFrame() { return TexturePtr(nullptr); }
+	Texture2DPtr getFrame() { return mFrameTex; }
 	float resultScale() const { return 1.0f; }
 
-	void setMatIndex(int index) { mMatIndex = index; }
+	void setIndex(int modelIndex, int matIndex) { mModelIndex = modelIndex, mMatIndex = matIndex; }
+	void forceClear() { mShader->clearUniformRecord(); }
 
 private:
 	PipelinePtr mCtx;
 	ShaderPtr mShader;
+	FrameBufferPtr mFrameBuffer;
+	Texture2DPtr mFrameTex;
 
 	int mDisplayChannel = 0;
+	int mModelIndex = 0;
 	int mMatIndex = 0;
 };

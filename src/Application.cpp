@@ -1,5 +1,30 @@
 #include "Application.h"
 
+#include <functional>
+#include <iostream>
+#include <fstream>
+#include <memory>
+#include <string>
+#include <random>
+#include <ctime>
+#include <map>
+
+#include "core/Buffer.h"
+#include "core/Camera.h"
+#include "core/CheckError.h"
+#include "core/FrameBuffer.h"
+#include "core/GLSizeofType.h"
+#include "core/Model.h"
+#include "core/RenderBuffer.h"
+#include "core/Pipeline.h"
+#include "core/Scene.h"
+#include "core/Texture.h"
+#include "core/VertexArray.h"
+#include "core/VerticalSync.h"
+#include "core/Sampler.h"
+#include "gui/FileSelector.h"
+#include "gui/Editor.h"
+
 std::pair<int, int> getWindowSize(GLFWwindow* window)
 {
 	int width, height;
@@ -9,12 +34,19 @@ std::pair<int, int> getWindowSize(GLFWwindow* window)
 
 NAMESPACE_BEGIN(Application)
 
+const int PostProcBlockX = 48;
+const int PostProcBlockY = 32;
+const int UnitPostOut = 6;
+const int UnitPostIn = 7;
+
 GLFWwindow* mainWindow = nullptr;
 
 std::shared_ptr<NaivePathIntegrator> naivePathTracer;
 std::shared_ptr<LightPathIntegrator> lightTracer;
 std::shared_ptr<TriplePathIntegrator> triplePathTracer;
-std::shared_ptr<StreamedPathIntegrator> streamedPathTracer;
+std::shared_ptr<GlobalQueuePathIntegrator> globalQueuePathTracer;
+std::shared_ptr<BlockQueuePathIntegrator> blockQueuePathTracer;
+std::shared_ptr<SharedQueuePathIntegrator> sharedQueuePathTracer;
 std::shared_ptr<BVHDisplayIntegrator> bvhDisplayer;
 std::shared_ptr<RasterView> rasterViewer;
 IntegratorPtr integrator;
@@ -27,6 +59,8 @@ namespace InputRecord
 	bool cursorDisabled = false;
 
 	std::set<int> pressedKeys;
+	double lastTime = 0;
+	double accFrameTime = 0;
 }
 
 namespace GLContext
@@ -35,39 +69,105 @@ namespace GLContext
 	VertexBufferPtr screenVB;
 	Scene scene;
 	ShaderPtr postShader;
-	glm::ivec2 frameSize;
+	glm::ivec2 renderSize;
+	glm::ivec2 windowSize;
+	Texture2DPtr resultTex;
 }
 
 namespace GUI
 {
-	int meshIndex = 0;
+	int modelIndex = 0;
+	int meshIndex;
 	int matIndex = 0;
+	int lightIndex = 0;
 	int envIndex;
 	int integIndex = 0;
-	bool explorerIsOpen = false;
+	int toneIndex = 1;
+	FileSelector fileSelector;
 }
 
 namespace Config
 {
-	bool showBVH = false;
 	bool cursorDisabled = false;
 
-	bool pause = false;
 	bool verticalSync = false;
 
 	bool preview = true;
 	int previewScale = 4;
 
-	int toneMapping = 2;
+	int toneMapping = 1;
+
+	bool limitTime = false;
+	double maxTime = 30.0;
+	double renderBeginTime;
+
+	bool rendering = false;
+	bool paused = false;
+	bool linkCameras = false;
+	bool reloaded = false;
+	bool sceneGeomChanged = false;
+
+	bool renderWindowIsOpen = true;
 }
 
-void reset()
+float getMainCameraAsp()
+{
+	return static_cast<float>(GLContext::renderSize.x) / GLContext::renderSize.y;
+}
+
+float getPreviewCameraAsp()
+{
+	return static_cast<float>(GLContext::windowSize.x) / GLContext::windowSize.y;
+}
+
+void resetPreviewCamera()
+{
+	GLContext::scene.resetPreviewCamera();
+	GLContext::scene.previewCamera.setAspect(getPreviewCameraAsp());
+}
+
+void setMainCameraCurrent()
+{
+	GLContext::scene.setCameraCurrent();
+	GLContext::scene.camera.setAspect(getMainCameraAsp());
+}
+
+void reset(ResetLevel level)
 {
 	using namespace GLContext;
 	using namespace Config;
-	glm::ivec2 resetFrameSize = preview ? frameSize / previewScale : frameSize;
-	integrator->setResetStatus({ &scene, resetFrameSize });
+	glm::ivec2 resetFrameSize = preview ? renderSize / previewScale : renderSize;
+	integrator->setStatus({ &scene, resetFrameSize });
 	integrator->setShouldReset();
+	if (resetFrameSize != integrator->getFrame()->size() || level == ResetLevel::ResetFrame)
+		integrator->recreateFrameTex(resetFrameSize.x, resetFrameSize.y);
+
+	if (resultTex->size() != renderSize || level == ResetLevel::ResetFrame)
+	{
+		resultTex = Texture2D::createEmpty(renderSize.x, renderSize.y, TextureFormat::Col4x32f);
+		Pipeline::bindTextureToImage(resultTex, UnitPostOut, 0, ImageAccess::WriteOnly, TextureFormat::Col4x32f);
+		GLContext::postShader->set2i("uFilmSize", renderSize.x, renderSize.y);
+		scene.camera.setAspect(getMainCameraAsp());
+	}
+
+	if (reloaded)
+	{
+		rasterViewer->setStatus({ &scene, resetFrameSize });
+		rasterViewer->reset({ &scene, windowSize });
+		rasterViewer->setIndex(0, 0);
+		reloaded = false;
+	}
+	renderBeginTime = ImGui::GetTime();
+}
+
+void regenerateScene(bool resetTextures)
+{
+	GLContext::scene.createGLContext(resetTextures);
+	Config::reloaded = true;
+	Config::sceneGeomChanged = false;
+	Pipeline::clearBindingRecord();
+	integrator->reset({ &GLContext::scene, GLContext::renderSize, ResetLevel::FullReset });
+	rasterViewer->reset({ &GLContext::scene, GLContext::renderSize, ResetLevel::FullReset });
 }
 
 bool isPressing(int keyCode)
@@ -104,11 +204,6 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mode
 			Config::preview ^= 1;
 			reset();
 		}
-		else if (key == GLFW_KEY_B)
-		{
-			Config::showBVH ^= 1;
-			reset();
-		}
 		else if (key == GLFW_KEY_V)
 		{
 			Config::verticalSync ^= 1;
@@ -120,8 +215,9 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mode
 void cursorCallback(GLFWwindow* window, double posX, double posY)
 {
 	using namespace InputRecord;
+	if (!cursorDisabled)
+		return;
 
-	if (!cursorDisabled) return;
 	if (firstCursorMove)
 	{
 		lastCursorX = posX;
@@ -133,34 +229,48 @@ void cursorCallback(GLFWwindow* window, double posX, double posY)
 	float offsetX = posX - lastCursorX;
 	float offsetY = posY - lastCursorY;
 	glm::vec3 offset = glm::vec3(offsetX, -offsetY, 0) * Camera::SensitivityRotate;
-	GLContext::scene.camera.rotate(offset);
+	GLContext::scene.previewCamera.rotate(offset);
 
 	lastCursorX = posX;
 	lastCursorY = posY;
-	reset();
+
+	if (Config::linkCameras)
+	{
+		setMainCameraCurrent();
+		reset();
+	}
 }
 
 void scrollCallback(GLFWwindow* window, double offsetX, double offsetY)
 {
 	if (!InputRecord::cursorDisabled)
 		return;
-	GLContext::scene.camera.changeFOV(offsetY);
-	reset();
+	GLContext::scene.previewCamera.changeFOV(offsetY);
+	if (Config::linkCameras)
+	{
+		setMainCameraCurrent();
+		reset();
+	}
 }
 
 void resizeCallback(GLFWwindow* window, int width, int height)
 {
 	using namespace GLContext;
 	pipeline->setViewport(0, 0, width, height);
-	scene.camera.setAspect(static_cast<float>(width) / height);
-	frameSize = { width, height };
-	reset();
+	scene.previewCamera.setAspect(static_cast<float>(width) / height);
+	windowSize = { width, height };
 }
 
-void init(int width, int height, const std::string& title, const File::path& scenePath)
+void init(const std::string& title, const File::path& scenePath)
 {
 	if (glfwInit() != GLFW_TRUE)
 		Error::exit("failed to init GLFW");
+
+	int nMonitors;
+	auto monitors = glfwGetMonitors(&nMonitors);
+	auto mode = glfwGetVideoMode(monitors[0]);
+	int windowWidth = mode->width * 0.75;
+	int windowHeight = mode->height * 0.75;
 
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
@@ -169,7 +279,7 @@ void init(int width, int height, const std::string& title, const File::path& sce
 	glfwWindowHint(GLFW_RESIZABLE, true);
 	glfwWindowHint(GLFW_VISIBLE, false);
 
-	mainWindow = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
+	mainWindow = glfwCreateWindow(windowWidth, windowHeight, title.c_str(), nullptr, nullptr);
 	glfwMakeContextCurrent(mainWindow);
 
 	glfwSetKeyCallback(mainWindow, keyCallback);
@@ -181,6 +291,10 @@ void init(int width, int height, const std::string& title, const File::path& sce
 		Error::exit("failed to init GLAD");
 
 	glEnable(GL_DEPTH_TEST);
+
+	int sharedMemSize;
+	glGetIntegerv(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE, &sharedMemSize);
+	Error::line("GL max shared memory size:\t" + std::to_string(sharedMemSize >> 10) + " KB");
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -203,7 +317,7 @@ void init(int width, int height, const std::string& title, const File::path& sce
 	plInfo.polyMode = PolygonMode::Fill;
 	plInfo.clearBuffer = BufferBit::Color | BufferBit::Depth;
 	pipeline = Pipeline::create(plInfo);
-	pipeline->setViewport(0, 0, width, height);
+	pipeline->setViewport(0, 0, windowWidth, windowHeight);
 
 	const float ScreenCoord[] =
 	{
@@ -213,37 +327,52 @@ void init(int width, int height, const std::string& title, const File::path& sce
 	screenVB = VertexBuffer::createTyped<glm::vec2>(ScreenCoord, 6);
 
 	scene.load(scenePath);
-	scene.createGLContext();
+	scene.createGLContext(true);
+
+	int width = scene.filmWidth;
+	int height = scene.filmHeight;
+	renderSize = { width, height };
 
 	naivePathTracer = std::make_shared<NaivePathIntegrator>();
-	naivePathTracer->init(scene, width, height, pipeline);
+	naivePathTracer->init(&scene, width, height, pipeline);
 	lightTracer = std::make_shared<LightPathIntegrator>();
-	lightTracer->init(scene, width, height, pipeline);
+	lightTracer->init(&scene, width, height, pipeline);
 	triplePathTracer = std::make_shared<TriplePathIntegrator>();
-	triplePathTracer->init(scene, width, height, pipeline);
-	streamedPathTracer = std::make_shared<StreamedPathIntegrator>();
-	streamedPathTracer->init(scene, width, height, pipeline);
+	triplePathTracer->init(&scene, width, height, pipeline);
+
+	globalQueuePathTracer = std::make_shared<GlobalQueuePathIntegrator>();
+	globalQueuePathTracer->init(&scene, width, height, pipeline);
+	blockQueuePathTracer = std::make_shared<BlockQueuePathIntegrator>();
+	blockQueuePathTracer->init(&scene, width, height, pipeline);
+	sharedQueuePathTracer = std::make_shared<SharedQueuePathIntegrator>();
+	sharedQueuePathTracer->init(&scene, width, height, pipeline);
 
 	bvhDisplayer = std::make_shared<BVHDisplayIntegrator>();
-	bvhDisplayer->init(scene, width, height, pipeline);
+	bvhDisplayer->init(&scene, width, height, pipeline);
 	rasterViewer = std::make_shared<RasterView>();
-	rasterViewer->init(scene, width, height, pipeline);
+	rasterViewer->init(&scene, windowWidth, windowHeight, pipeline);
+	rasterViewer->setStatus({ &scene, { windowWidth, windowHeight } });
 
 	integrator = naivePathTracer;
 
-	postShader = Shader::createFromText("post_proc.glsl");
+	resultTex = Texture2D::createEmpty(width, height, TextureFormat::Col4x32f);
+	Pipeline::bindTextureToImage(resultTex, UnitPostOut, 0, ImageAccess::WriteOnly, TextureFormat::Col4x32f);
+
+	postShader = Shader::createFromText("post_proc.glsl", glm::ivec3{ PostProcBlockX, PostProcBlockY, 1 });
+	postShader->set2i("uFilmSize", width, height);
 	postShader->set1i("uToneMapper", Config::toneMapping);
-	auto framePtr = integrator->getFrame();
-	if (framePtr)
-		postShader->setTexture("uFrame", framePtr, 0);
 
 	VerticalSyncStatus(Config::verticalSync);
+	resetPreviewCamera();
+	setMainCameraCurrent();
+	reset();
 }
 
 void captureImage()
 {
 	std::string name = "screenshots/save" + std::to_string((long long)time(0)) + ".png";
-	auto img = GLContext::pipeline->readFramePixels();
+	//auto img = GLContext::pipeline->readFramePixels();
+	auto img = GLContext::resultTex->readFromDevice();
 	stbi_flip_vertically_on_write(true);
 	stbi_write_png(name.c_str(), img->width(), img->height(), 3, img->data(), img->width() * 3);
 	Error::bracketLine<0>("Save " + name + " " + std::to_string(img->width()) + "x"
@@ -252,78 +381,23 @@ void captureImage()
 
 void processKeys()
 {
-	if (GUI::explorerIsOpen)
+	if (GUI::fileSelector.isOpen())
 		return;
 
 	const int Keys[] = { GLFW_KEY_W, GLFW_KEY_S, GLFW_KEY_A, GLFW_KEY_D,
 		GLFW_KEY_Q, GLFW_KEY_E, GLFW_KEY_R, GLFW_KEY_LEFT_SHIFT, GLFW_KEY_SPACE };
 
-	bool updated = false;
 	for (auto key : Keys)
 	{
 		if (isPressing(key))
 		{
-			GLContext::scene.camera.move(key);
-			updated = true;
+			GLContext::scene.previewCamera.move(key);
+			if (Config::linkCameras)
+			{
+				setMainCameraCurrent();
+				reset();
+			}
 		}
-	}
-
-	if (updated)
-		reset();
-}
-
-void materialEditor(Scene& scene, int matIndex)
-{
-	auto& m = scene.materials[matIndex];
-	const char* matTypes[] = { "Lambertian", "Principled", "MetalWorkflow", "Dielectric", "ThinDielectric" };
-	bool writeMat = false;
-
-	if (ImGui::Combo("Type", &m.type, matTypes, IM_ARRAYSIZE(matTypes)))
-		writeMat = true;
-	if (m.type == Material::Lambertian)
-	{
-		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)))
-			writeMat = true;
-	}
-	else if (m.type == Material::MetalWorkflow)
-	{
-		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
-			ImGui::SliderFloat("Metallic", &m.metallic, 0.0f, 1.0f) ||
-			ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
-			writeMat = true;
-	}
-	else if (m.type == Material::Principled)
-	{
-		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
-			ImGui::SliderFloat("Subsurface", &m.subsurface, 0.0f, 1.0f) ||
-			ImGui::SliderFloat("Metallic", &m.metallic, 0.0f, 1.0f) ||
-			ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f) ||
-			ImGui::SliderFloat("Specular", &m.specular, 0.0f, 1.0f) ||
-			ImGui::SliderFloat("Specular tint", &m.specularTint, 0.0f, 1.0f) ||
-			ImGui::SliderFloat("Sheen", &m.sheen, 0.0f, 1.0f) ||
-			ImGui::SliderFloat("Sheen tint", &m.sheenTint, 0.0f, 1.0f) ||
-			ImGui::SliderFloat("Clearcoat", &m.clearcoat, 0.0f, 1.0f) ||
-			ImGui::SliderFloat("Clearcoat gloss", &m.clearcoatGloss, 0.0f, 1.0f))
-			writeMat = true;
-	}
-	else if (m.type == Material::Dielectric)
-	{
-		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
-			ImGui::SliderFloat("IOR", &m.ior, 0.01f, 3.5f) ||
-			ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f))
-			writeMat = true;
-	}
-	else if (m.type == Material::ThinDielectric)
-	{
-		if (ImGui::ColorEdit3("BaseColor", glm::value_ptr(m.baseColor)) ||
-			ImGui::SliderFloat("IOR", &m.ior, 0.01f, 3.5f))
-			writeMat = true;
-	}
-
-	if (writeMat)
-	{
-		scene.glContext.material->write(sizeof(Material) * matIndex, sizeof(Material), &m);
-		reset();
 	}
 }
 
@@ -340,13 +414,10 @@ void renderGUI()
 	{
 		if (ImGui::BeginMenu("File"))
 		{
-			if (ImGui::MenuItem("Open", "Ctrl+O"))
-				GUI::explorerIsOpen = true;
+			if (ImGui::MenuItem("Import", "Ctrl+O"))
+				GUI::fileSelector.isOpen() = true;
 
-			if (ImGui::MenuItem("Save", "Ctrl+S"));
-
-			if (ImGui::MenuItem("Save image", nullptr))
-				captureImage();
+			if (ImGui::MenuItem("Export", "Ctrl+S"));
 
 			if (ImGui::MenuItem("Exit", "Esc"));
 			ImGui::EndMenu();
@@ -354,6 +425,7 @@ void renderGUI()
 
 		if (ImGui::BeginMenu("Settings"))
 		{
+			rasterViewer->renderSettingsGUI();
 			ImGui::Text("General");
 			ImGui::PushItemWidth(200.0f);
 
@@ -361,68 +433,78 @@ void renderGUI()
 			if (ImGui::Checkbox("Vertical sync ", &verticalSync))
 				VerticalSyncStatus(verticalSync);
 
-			if (ImGui::Checkbox("Preview mode  ", &preview))
-				reset();
-			if (preview)
-			{
-				ImGui::SetNextItemWidth(80.0f);
-				ImGui::SameLine();
-				if (ImGui::SliderInt("Preview scale", &previewScale, 2, 32))
-					reset();
-			}
-
 			ImGui::PopItemWidth();
 			if (ImGui::SliderAngle("Env rotation", &scene.envRotation, -180.0f, 180.0f))
 				reset();
-			ImGui::Separator();
 
-			const char* IntegNames[] = {
-				"NaivePath", "LightPath", "TriplePath", "StreamedPath", "BVHDisplay", "RasterView" };
-			IntegratorPtr integs[] = {
-				naivePathTracer, lightTracer, triplePathTracer, streamedPathTracer, bvhDisplayer, rasterViewer };
+			if (ImGui::Checkbox("Limit time", &limitTime) &&
+				ImGui::GetTime() - renderBeginTime >= maxTime)
+				reset();
+			if (limitTime)
+			{
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(120.0f);
+				if (ImGui::InputDouble("Max time     ", &maxTime, 1.0, 10.0) &&
+					ImGui::GetTime() - renderBeginTime >= maxTime)
+					reset();
+			}
+
+			const char* ToneMappers[] = { "None", "Filmic", "ACES" };
+			if (ImGui::Combo("Tone mapper", &GUI::toneIndex, ToneMappers, IM_ARRAYSIZE(ToneMappers)))
+				postShader->set1i("uToneMapper", GUI::toneIndex);
+
+			if (ImGui::DragInt2("Render size", glm::value_ptr(renderSize), 10.0, 1, 4096))
+				reset();
+
+			const char* IntegNames[] = { "NaivePath", "LightPath", "TriplePath",
+				"GlobalQueuePath", "BlockQueuePath", "SharedQueuePath",
+				"BVHDisplay" };
+			IntegratorPtr integs[] = { naivePathTracer, lightTracer, triplePathTracer,
+				globalQueuePathTracer, blockQueuePathTracer, sharedQueuePathTracer,
+				bvhDisplayer };
 			if (ImGui::Combo("Integrator", &GUI::integIndex, IntegNames, IM_ARRAYSIZE(IntegNames)))
 			{
 				integrator = integs[GUI::integIndex];
-				verticalSync = GUI::integIndex == 5;
-				VerticalSyncStatus(GUI::integIndex == 5);
-				reset();
+				reset(ResetLevel::ResetFrame);
 			}
-			integrator->renderSettingsGUI();
+			ImGui::Separator();
 
+			ImGui::Text("%s settings", IntegNames[GUI::integIndex]);
+			integrator->renderSettingsGUI();
 			ImGui::EndMenu();
 		}
 
 		if (ImGui::BeginMenu("Camera"))
 		{
-			auto& camera = scene.camera;
-			auto pos = camera.pos();
-			auto fov = camera.FOV();
-			auto angle = camera.angle();
-			auto lensRadius = camera.lensRadius();
-			auto focalDist = camera.focalDist();
-			if (ImGui::DragFloat3("Position", glm::value_ptr(pos), 0.1f) ||
-				ImGui::DragFloat3("Angle", glm::value_ptr(angle), 0.05f) ||
-				ImGui::SliderFloat("FOV", &fov, 0.0f, 90.0f) ||
-				ImGui::DragFloat("Lens radius", &lensRadius, 0.001f, 0.0f, 10.0f) ||
-				ImGui::DragFloat("Focal distance", &focalDist, 0.01f, 0.004f, 100.0f))
+			if (cameraEditor(scene.camera, "Rendering camera"))
+				reset();
+			if (ImGui::Button("Set to preview camera"))
 			{
-				camera.setPos(pos);
-				camera.setAngle(angle);
-				camera.setFOV(fov);
-				camera.setLensRadius(lensRadius);
-				camera.setFocalDist(focalDist);
+				setMainCameraCurrent();
+				reset();
+			}
+			if (cameraEditor(scene.previewCamera, "Preview camera"))
+				reset();
+			if (ImGui::Button("Set to default"))
+				resetPreviewCamera();
+			if (ImGui::Checkbox("Link cameras", &linkCameras) && linkCameras)
+			{
+				setMainCameraCurrent();
 				reset();
 			}
 			ImGui::EndMenu();
 		}
 		
-		if (ImGui::BeginMenu("Material"))
+		if (ImGui::BeginMenu("Model"))
 		{
-			ImGui::SliderInt("Index", &GUI::matIndex, 0, scene.materials.size() - 1);
-			bvhDisplayer->setMatIndex(GUI::matIndex);
-			bvhDisplayer->setShouldReset();
-			rasterViewer->setMatIndex(GUI::matIndex);
-			materialEditor(scene, GUI::matIndex);
+			ImGui::SliderInt("Material", &GUI::matIndex, 0, scene.materials.size() - 1);
+			
+			if (materialEditor(scene, GUI::matIndex))
+				reset();
+			sceneGeomChanged |= modelEditor(scene, GUI::modelIndex, GUI::meshIndex, GUI::matIndex);
+			//sceneGeomChanged |= lightEditor(scene, GUI::lightIndex);
+
+			rasterViewer->setIndex(GUI::modelIndex, GUI::matIndex);
 			ImGui::EndMenu();
 		}
 
@@ -432,7 +514,7 @@ void renderGUI()
 			ImGui::Text("Triangles:    %d", scene.triangleCount);
 			ImGui::Text("Vertices:     %d", scene.vertexCount);
 			ImGui::Text("");
-			ImGui::Text("Window size:  %dx%d", frameSize.x, frameSize.y);
+			ImGui::Text("Window size:  %dx%d", windowSize.x, windowSize.y);
 			ImGui::EndMenu();
 		}
 
@@ -445,58 +527,139 @@ void renderGUI()
 			ImGui::BulletText("W/A/S/D       Move camera horizonally");
 			ImGui::BulletText("Shift/Space   Move camera vertically");
 			ImGui::BulletText("Esc           Quit");
+			ImGui::Text("");
+			ImGui::Text("Modification of cameras and materials will instantly reflect in the renderer. "
+				"However, models' and lights' won't because they require complete scene rebuilt, so you have to restart current rendering");
+			ImGui::EndMenu();
+		}
+
+		if (!renderWindowIsOpen && ImGui::BeginMenu("Render*"))
+		{
+			renderWindowIsOpen = true;
 			ImGui::EndMenu();
 		}
 
 		ImGui::EndMainMenuBar();
 	}
 
+	if (renderWindowIsOpen)
+	{
+		ImGui::Begin("Render", &renderWindowIsOpen, ImGuiWindowFlags_AlwaysAutoResize);
+		{
+			if (!rendering && ImGui::Button(" Start "))
+			{
+				rendering = true;
+				if (sceneGeomChanged)
+					regenerateScene(false);
+			}
+			if (rendering && ImGui::Button("Restart"))
+			{
+				paused = false;
+				if (sceneGeomChanged)
+					regenerateScene(false);
+				else
+					reset();
+			}
+
+			ImGui::SameLine();
+			if (!paused && ImGui::Button("Pause "))
+				paused = true;
+			if (paused && ImGui::Button("Resume"))
+				paused = false;
+
+			ImGui::SameLine();
+			if (ImGui::Button("Save"))
+				captureImage();
+
+			ImGui::SameLine();
+			if (ImGui::Checkbox("Preview", &preview))
+				reset();
+			if (preview)
+			{
+				ImGui::SetNextItemWidth(80.0f);
+				ImGui::SameLine();
+				if (ImGui::SliderInt("Scale", &previewScale, 2, 32))
+					reset();
+			}
+
+			static float displayScale = 0.5f;
+			ImGui::SliderFloat("Display scale", &displayScale, 0.0f, 1.0f);
+
+			ImGui::Image((ImTextureID)resultTex->id(), { renderSize.x * displayScale, renderSize.y * displayScale },
+				ImVec2(0, 1), ImVec2(1, 0));
+			integrator->renderProgressGUI();
+
+			ImGui::End();
+		}
+	}
+
 	auto [width, height] = getWindowSize(mainWindow);
 	ImGui::SetNextWindowPos({ static_cast<float>(width) - 280.0f, 40.0f });
-
-	ImGui::Begin("Example: Simple overlay", nullptr,
+	if (ImGui::Begin("Example: Simple overlay", nullptr,
 		ImGuiWindowFlags_NoMove |
 		ImGuiWindowFlags_NoDecoration |
 		ImGuiWindowFlags_AlwaysAutoResize |
 		ImGuiWindowFlags_NoSavedSettings |
 		ImGuiWindowFlags_NoFocusOnAppearing |
-		ImGuiWindowFlags_NoNav);
+		ImGuiWindowFlags_NoNav))
 	{
-		integrator->renderProgressGUI();
-		ImGui::Text("Render Time: %.3f ms, FPS: %.3f", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-	}
-	ImGui::End();
+		using namespace InputRecord;
 
-	if (GUI::explorerIsOpen)
-	{
-		ImGui::Begin("Explorer", &GUI::explorerIsOpen);
-		{
-			static char buf[512];
-			ImGui::InputText("Path", buf, 512);
-			if (ImGui::Button("Open"))
-			{
-				Error::bracketLine<0>("Scene file loading " + std::string(buf));
-				std::ifstream file(buf);
-				if (file.is_open())
-				{
-					file.close();
-					scene.load(buf);
-					scene.createGLContext();
-					GUI::matIndex = 0;
-					glfwSetWindowSize(mainWindow, scene.filmWidth, scene.filmHeight);
-					reset();
-					GUI::explorerIsOpen = false;
-				}
-				else
-					ImGui::Text("Unable to load file");
-			}
-		}
+		if (limitTime)
+			ImGui::ProgressBar((ImGui::GetTime() - renderBeginTime) / maxTime, ImVec2(-1, 0),
+				std::to_string(ImGui::GetTime() - renderBeginTime).c_str());
+		else
+			ImGui::Text("Time: %lf", ImGui::GetTime() - renderBeginTime);
+
+		double curTime = ImGui::GetTime();
+		double frameTime = (curTime - lastTime) * 1000.0;
+		const double Alpha = 0.25;
+		accFrameTime = glm::mix(accFrameTime, frameTime, Alpha);
+		ImGui::Text("Render Time: %.3lf ms, FPS: %.3lf", accFrameTime, 1000.0 / accFrameTime);
+		lastTime = curTime;
 		ImGui::End();
 	}
+
+	if (auto path = GUI::fileSelector.show())
+	{
+		if (scene.load(*path))
+		{
+			GUI::fileSelector.isOpen() = false;
+			renderSize = { scene.filmWidth, scene.filmHeight };
+			regenerateScene(true);
+			resetPreviewCamera();
+			setMainCameraCurrent();
+		}
+		else
+			Error::bracketLine<0>(path->generic_string() + " is not a scene file");
+	}
+
+	//ImGui::ShowDemoWindow();
 
 	ImGui::EndFrame();
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+void integrate()
+{
+	using namespace GLContext;
+	using namespace Config;
+
+	if ((rendering && !paused) && (!limitTime || ImGui::GetTime() - renderBeginTime < maxTime))
+		integrator->renderOnePass();
+
+	auto resultTex = integrator->getFrame();
+	if (resultTex)
+	{
+		int numX = (renderSize.x + PostProcBlockX - 1) / PostProcBlockX;
+		int numY = (renderSize.y + PostProcBlockY - 1) / PostProcBlockY;
+		postShader->set1f("uResultScale", integrator->resultScale());
+		postShader->set1i("uPreviewScale", previewScale);
+		postShader->set1i("uPreview", preview);
+		postShader->setTexture("uIn", integrator->getFrame(), 7);
+		Pipeline::dispatchCompute(numX, numY, 1, postShader);
+	}
 }
 
 int run()
@@ -511,16 +674,10 @@ int run()
 			return 0;
 		processKeys();
 
-		integrator->renderOnePass();
-
-		auto frameTex = integrator->getFrame();
-		if (frameTex)
-		{
-			pipeline->clear({ 0.0f, 0.0f, 0.0f, 1.0f });
-			postShader->setTexture("uFrame", frameTex, 0);
-			postShader->set1f("uResultScale", integrator->resultScale());
-			pipeline->draw(screenVB, VertexArray::layoutPos2(), postShader);
-		}
+		integrate();
+		
+		pipeline->clear({ 0.0f, 0.0f, 0.0f, 1.0f });
+		rasterViewer->renderOnePass();
 		renderGUI();
 
 		glfwSwapBuffers(mainWindow);

@@ -9,9 +9,11 @@ void BVHDisplayIntegrator::recreateFrameTex(int width, int height)
 	mFrameTex->setFilter(TextureFilter::Nearest);
 }
 
-void BVHDisplayIntegrator::updateUniforms(const Scene& scene, int width, int height)
+void BVHDisplayIntegrator::updateUniforms(const RenderStatus& status)
 {
-	auto& sceneBuffers = scene.glContext;
+	auto [scene, size, level] = status;
+	
+	auto& sceneBuffers = scene->glContext;
 	Pipeline::bindTextureToImage(mFrameTex, 0, 0, ImageAccess::ReadWrite, TextureFormat::Col4x32f);
 	mShader->setTexture("uVertices", sceneBuffers.vertex, 1);
 	mShader->setTexture("uNormals", sceneBuffers.normal, 2);
@@ -20,11 +22,11 @@ void BVHDisplayIntegrator::updateUniforms(const Scene& scene, int width, int hei
 	mShader->setTexture("uBounds", sceneBuffers.bound, 5);
 	mShader->setTexture("uHitTable", sceneBuffers.hitTable, 6);
 	mShader->setTexture("uMatTexIndices", sceneBuffers.matTexIndex, 7);
-	mShader->set1i("uBvhSize", scene.boxCount);
-	mShader->set1f("uBvhDepth", glm::log2(static_cast<float>(scene.boxCount)));
+	mShader->set1i("uBvhSize", scene->boxCount);
+	mShader->set1f("uBvhDepth", glm::log2(static_cast<float>(scene->boxCount)));
 	mShader->set1i("uMatIndex", mMatIndex);
 
-	const auto& camera = scene.camera;
+	const auto& camera = scene->camera;
 	mShader->setVec3("uCamF", camera.front());
 	mShader->setVec3("uCamR", camera.right());
 	mShader->setVec3("uCamU", camera.up());
@@ -35,14 +37,17 @@ void BVHDisplayIntegrator::updateUniforms(const Scene& scene, int width, int hei
 	mShader->set1f("uCamAsp", camera.aspect());
 	mShader->set1f("uLensRadius", camera.lensRadius());
 	mShader->set1f("uFocalDist", camera.focalDist());
-	mShader->set2i("uFilmSize", width, height);
+	mShader->setVec2i("uFilmSize", size);
+
+	mShader->set1i("uCheckDepth", mCheckDepth);
+	mShader->set1i("uDepthCmp", mDepthCmp);
 }
 
-void BVHDisplayIntegrator::init(const Scene& scene, int width, int height, PipelinePtr ctx)
+void BVHDisplayIntegrator::init(Scene* scene, int width, int height, PipelinePtr ctx)
 {
 	mShader = Shader::createFromText("bvh_display.glsl", { WorkgroupSizeX, WorkgroupSizeY, 1 });
 	recreateFrameTex(width, height);
-	updateUniforms(scene, width, height);
+	updateUniforms({ scene, { width, height } });
 }
 
 void BVHDisplayIntegrator::renderOnePass()
@@ -50,7 +55,7 @@ void BVHDisplayIntegrator::renderOnePass()
 	mFreeCounter++;
 	if (mShouldReset)
 	{
-		reset(*mResetStatus.scene, mResetStatus.renderSize.x, mResetStatus.renderSize.y);
+		reset(mStatus);
 		mShouldReset = false;
 	}
 	if (mCurSample > 1)
@@ -59,8 +64,8 @@ void BVHDisplayIntegrator::renderOnePass()
 		return;
 	}
 
-	int width = mResetStatus.renderSize.x;
-	int height = mResetStatus.renderSize.y;
+	int width = mStatus.renderSize.x;
+	int height = mStatus.renderSize.y;
 	int numX = (width + WorkgroupSizeX - 1) / WorkgroupSizeX;
 	int numY = (height + WorkgroupSizeY - 1) / WorkgroupSizeY;
 
@@ -70,12 +75,22 @@ void BVHDisplayIntegrator::renderOnePass()
 	mCurSample++;
 }
 
-void BVHDisplayIntegrator::reset(const Scene& scene, int width, int height)
+void BVHDisplayIntegrator::reset(const RenderStatus& status)
 {
-	if (width != mFrameTex->width() && height != mFrameTex->height())
-		recreateFrameTex(width, height);
-	updateUniforms(scene, width, height);
+	if (mFrameTex->size() != status.renderSize)
+		recreateFrameTex(status.renderSize.x, status.renderSize.y);
+	updateUniforms(status);
 	mCurSample = 0;
+}
+
+void BVHDisplayIntegrator::renderSettingsGUI()
+{
+	ImGui::Checkbox("Check depth", &mCheckDepth);
+	if (mCheckDepth)
+	{
+		if (ImGui::InputInt("Compare depth", &mDepthCmp, 1, 10));
+			setShouldReset();
+	}
 }
 
 void BVHDisplayIntegrator::renderProgressGUI()

@@ -33,6 +33,10 @@ uniform int uTexIndex;
 uniform vec2 uTexScale;
 uniform int uChannel;
 
+uniform bool uHighlightMaterial;
+uniform bool uHighlightModel;
+uniform int uCounter;
+
 vec3 calc(vec3 x)
 {
 	const float A = 0.22, B = 0.3, C = 0.1, D = 0.2, E = 0.01, F = 0.3;
@@ -43,6 +47,11 @@ vec3 filmic(vec3 color)
 {
 	const float WHITE = 11.2;
 	return calc(color * 1.6) / calc(vec3(WHITE));
+}
+
+float maxComponent(vec3 v)
+{
+	return max(v.x, max(v.y, v.z));
 }
 
 void main()
@@ -63,5 +72,13 @@ void main()
 	else if (uChannel == 3)
 		result = vec3(fract(vUV) * ((uTexIndex == -1) ? vec2(1.0) : uTexScale), 1.0);
 
+	ivec2 uv = ivec2(gl_FragCoord.xy) + ivec2(1, 0) * uCounter;
+
+	if (uHighlightModel && (uv.x + uv.y) / 40 % 2 == 0)
+		result += vec3(1.0, 0.4, 0.2);
+	if (uHighlightMaterial && (uv.x + uv.y) / 40 % 2 == 1)
+		result += vec3(0.2, 0.2, 0.8);
+
+	result = min(result, vec3(1.0));
 	FragColor = vec4(pow(result, vec3(1.0 / 2.2)), 1.0);
 }

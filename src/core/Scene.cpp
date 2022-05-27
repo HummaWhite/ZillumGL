@@ -22,7 +22,12 @@ std::tuple<glm::vec3, glm::vec3, glm::vec3> loadTransform(const pugi::xml_node& 
 
 std::pair<ModelInstancePtr, std::optional<glm::vec3>> loadModelInstance(const pugi::xml_node& modelNode)
 {
-	auto model = Resource::openModelInstance(modelNode.attribute("path").as_string(), glm::vec3(0.0f));
+	auto modelPath = modelNode.attribute("path").as_string();
+	auto model = Resource::openModelInstance(modelPath, glm::vec3(0.0f));
+
+	std::string name(modelNode.attribute("name").as_string());
+	model->setName(name);
+	model->setPath(modelPath);
 
 	auto transNode = modelNode.child("transform");
 	auto [pos, scale, rot] = loadTransform(transNode);
@@ -50,7 +55,7 @@ std::pair<ModelInstancePtr, std::optional<glm::vec3>> loadModelInstance(const pu
 	return { model, std::nullopt };
 }
 
-void Scene::load(const File::path& path)
+bool Scene::load(const File::path& path)
 {
 	Error::bracketLine<0>("Scene " + path.generic_string());
 	Resource::clear();
@@ -59,10 +64,11 @@ void Scene::load(const File::path& path)
 	pugi::xml_document doc;
 	doc.load_file(path.generic_string().c_str());
 	auto scene = doc.child("scene");
+	if (!scene)
+		return false;
 	{
 		auto integrator = scene.child("integrator");
 		std::string integStr(integrator.attribute("type").as_string());
-		aoMode = (integStr != "path");
 		
 		auto size = integrator.child("size");
 		filmWidth = size.attribute("width").as_int();
@@ -94,6 +100,7 @@ void Scene::load(const File::path& path)
 		camera.setAspect(static_cast<float>(filmWidth) / filmHeight);
 		camera.setLensRadius(cameraNode.child("lensRadius").attribute("value").as_float());
 		camera.setFocalDist(cameraNode.child("focalDistance").attribute("value").as_float());
+		originalCamera = previewCamera = camera;
 
 		Error::bracketLine<1>("Camera " + std::string(cameraNode.attribute("type").as_string()));
 		Error::bracketLine<2>("Position " + posStr);
@@ -116,13 +123,14 @@ void Scene::load(const File::path& path)
 	{
 		envMap = EnvironmentMap::create(scene.child("envMap").attribute("path").as_string());
 	}
+	return true;
 }
 
 void Scene::saveToFile(const File::path& path)
 {
 }
 
-void Scene::createGLContext()
+void Scene::createGLContext(bool resetTextures)
 {
 	std::vector<glm::vec3> vertices;
 	std::vector<glm::vec3> normals;
@@ -130,8 +138,13 @@ void Scene::createGLContext()
 	std::vector<uint32_t> indices;
 	std::vector<uint32_t> matTexIndices;
 
+	lightSumPdf = 0.0f;
+	nLightTriangles = 0;
+	objPrimCount = 0;
+
 	uint32_t offIndVertex = 0;
 	uint32_t offIndMaterial = 0;
+
 	for (const auto& object : objects)
 	{
 		auto modelMat = object->materials();
@@ -153,6 +166,8 @@ void Scene::createGLContext()
 				indices.push_back(i + offIndVertex);
 			for (size_t i = 0; i < meshData->indices.size() / 3; i++)
 				matTexIndices.push_back(offIndMaterial + (meshInstance->texIndex << 16 | meshInstance->matIndex));
+			meshInstance->globalMatIndex = (meshInstance->matIndex != -1) ?
+				meshInstance->matIndex + offIndMaterial : -1;
 
 			offIndVertex += meshData->positions.size();
 			objPrimCount += meshData->indices.size() / 3;
@@ -189,28 +204,38 @@ void Scene::createGLContext()
 
 	auto luminance = [](const glm::vec3& v) -> float
 	{
-		return glm::dot(v, glm::vec3(0.2126f, 0.7152f, 0.0722f));
+		return glm::dot(v, glm::vec3(0.299f, 0.587f, 0.114f));
 	};
 
 	for (const auto light : lights)
 	{
-		const auto [lt, radiance] = light;
+		const auto [lt, sumPower] = light;
 		auto model = lt->modelMatrix();
 
 		for (const auto& meshInstance : lt->meshInstances())
 		{
 			const auto& meshData = meshInstance->meshData;
+			float sumArea = 0.0f;
+			for (size_t i = 0; i < meshData->indices.size() / 3; i++)
+			{
+				glm::vec3 va(model * glm::vec4(meshData->positions[meshData->indices[i * 3 + 0]], 1.0f));
+				glm::vec3 vb(model * glm::vec4(meshData->positions[meshData->indices[i * 3 + 1]], 1.0f));
+				glm::vec3 vc(model * glm::vec4(meshData->positions[meshData->indices[i * 3 + 2]], 1.0f));
+				float area = glm::length(glm::cross(vc - va, vb - va));
+				sumArea += area;
+			}
+
 			for (size_t i = 0; i < meshData->indices.size() / 3; i++)
 			{
 				glm::vec3 va(model * glm::vec4(meshData->positions[meshData->indices[i * 3 + 0]], 1.0f));
 				glm::vec3 vb(model * glm::vec4(meshData->positions[meshData->indices[i * 3 + 1]], 1.0f));
 				glm::vec3 vc(model * glm::vec4(meshData->positions[meshData->indices[i * 3 + 2]], 1.0f));
 
-				float area = 0.5f * glm::length(glm::cross(vc - va, vb - va));
-				glm::vec3 p = radiance * area * glm::pi<float>() * 2.0f;
-				lightPower.push_back(p);
-				pdf.push_back(luminance(p));
-				lightSumPdf += luminance(p);
+				float area = glm::length(glm::cross(vc - va, vb - va));
+				glm::vec3 power = sumPower * area / sumArea;
+				lightPower.push_back(power);
+				pdf.push_back(luminance(power)); 
+				lightSumPdf += luminance(power);
 			}
 			nLightTriangles += meshData->indices.size() / 3;
 		}
@@ -228,12 +253,15 @@ void Scene::createGLContext()
 	glContext.lightPower = TextureBuffered::createFromVector(lightPower, TextureFormat::Col3x32f);
 	glContext.lightAlias = TextureBuffered::createFromVector(lightAlias, TextureFormat::Col1x32i);
 	glContext.lightProb = TextureBuffered::createFromVector(lightProb, TextureFormat::Col1x32f);
-	glContext.textures = Texture2DArray::createFromImages(Resource::getAllImages(), TextureFormat::Col3x32f);
+	if (resetTextures)
+		glContext.textures = Texture2DArray::createFromImages(Resource::getAllImages(), TextureFormat::Col3x32f);
 	glContext.texUVScale = TextureBuffered::createFromVector(glContext.textures->texScales(), TextureFormat::Col2x32f);
 
-	sobolTex = Sampler::genSobolSeqTexture(SampleNum, SampleDim);
-	noiseTex = Sampler::genNoiseTexture(filmWidth, filmHeight);
-
+	if (resetTextures)
+	{
+		sobolTex = Sampler::genSobolSeqTexture(SampleNum, SampleDim);
+		noiseTex = Sampler::genNoiseTexture(filmWidth, filmHeight);
+	}
 	vertexCount = vertices.size();
 	triangleCount = vertices.size() / 3;
 	boxCount = bvhBuf.bounds.size();
@@ -246,10 +274,6 @@ void Scene::clear()
 	objects.clear();
 	lights.clear();
 	materials.clear();
-
-	lightSumPdf = 0.0f;
-	nLightTriangles = 0;
-	objPrimCount = 0;
 }
 
 void Scene::addObject(ModelInstancePtr object)
@@ -262,7 +286,7 @@ void Scene::addMaterial(const Material& material)
 	materials.push_back(material);
 }
 
-void Scene::addLight(ModelInstancePtr light, const glm::vec3& radiance)
+void Scene::addLight(ModelInstancePtr light, const glm::vec3& power)
 {
-	lights.push_back({ light, radiance });
+	lights.push_back({ light, power });
 }
